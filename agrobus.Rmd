@@ -1,0 +1,7 @@
+---
+title: "Agrobusiness"
+author: "Kate, Anastasiia, Max"
+date: "2026-04-02"
+output: html_document
+---
+
