@@ -5,3 +5,35 @@ date: "2026-04-02"
 output: html_document
 ---
 
+---
+
+# Hypotheses and objectives description.
+Analyse data for argoculture cluster businesses, so they would have answers for such questions:
+- What range of data they need to analyse to construct the regression
+- What information isn't mandatory to collect
+- How to predict good or bad harvest knowing approximate weather beforehand
+
+Explain what problems are solved in your projects.  What issues are you researching? What hypotheses did you test? What is “your story” about?
+
+---
+
+# Data analysis. 
+Provide your data analysis. What conclusions can be drawn from this analysis? Does this analysis lead to any first conclusions about the research question or suggest any hypotheses worth testing?
+
+---
+
+# Methods. 
+Explain accurately what methods you are using to solve the tasks of interest.
+
+---
+
+# Results. 
+Describe the results you already have obtained at this stage.
+
+---
+
+# Conclusions. 
+What conclusions have you already drawn?
+
+---
+
