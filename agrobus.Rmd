@@ -5,35 +5,58 @@ date: "2026-04-02"
 output: html_document
 ---
 
----
+------------------------------------------------------------------------
 
 # Hypotheses and objectives description.
-Analyse data for argoculture cluster businesses, so they would have answers for such questions:
-- What range of data they need to analyse to construct the regression
-- What information isn't mandatory to collect
-- How to predict good or bad harvest knowing approximate weather beforehand
 
-Explain what problems are solved in your projects.  What issues are you researching? What hypotheses did you test? What is “your story” about?
+Our project researches the "story" of wheat market volatility in Ukraine. We are solving the problem of agricultural risk management by identifying which meteorological and human-led factors (like fertilizers) actually drive yields and prices. We aim to provide agribusinesses with a clear framework for data collection: what range of data is mandatory and what is redundant.
 
----
+### Research Hypotheses
 
-# Data analysis. 
-Provide your data analysis. What conclusions can be drawn from this analysis? Does this analysis lead to any first conclusions about the research question or suggest any hypotheses worth testing?
+**1. Traditional Significance and Input Factors:**
 
----
+$H_0$: Meteorological factors (radiation, temperature, humidity), fertilizers, and chemicals have no statistically significant effect on wheat yield or prices.
 
-# Methods. 
-Explain accurately what methods you are using to solve the tasks of interest.
+$H_1$: These factors have a significant impact, specifically following a non-linear "U-shaped" or parabolic curve where both extremes are detrimental.
 
----
+**2. Seasonal Relevancy (The "Winter" Question):**
 
-# Results. 
-Describe the results you already have obtained at this stage.
+$H_0$: Weather data from outside the active spring/summer growing season (e.g., winter temperatures) is not significant for predicting harvest outcomes.
 
----
+$H_1$: Winter weather is a significant predictor of soil moisture reserves and winter-kill rates, which directly impact the final yield and market price dynamics.
 
-# Conclusions. 
-What conclusions have you already drawn?
+**3. Data Granularity and Extreme Day Classification:** - **Goal:** We test a custom classification where average daily temperature $(T_{max} - T_{min}) / 2$ is used to categorize days as "Extremely Cold" ($< -10^{\circ}C$), "Cold" ($-10^{\circ}C$ to $5^{\circ}C$), "Warm" ($5^{\circ}C$ to $30^{\circ}C$), or "Hot" ($> 30^{\circ}C$).
 
----
+$H_0$: Summing "extra days" (extreme heat/cold) does not provide more predictive power than simple weekly averages.
 
+$H_1$: The frequency of extreme temperature events is a more accurate predictor of yield shocks than mean temperature alone, requiring high-frequency (daily) data collection for valid modeling.
+
+**4. Cloudiness and Correlation Logic (Variable Selection):**
+
+$H_0$: Cloudiness, rain, and sunshine duration are independent predictors with no significant correlation.
+
+$H_1$: Cloudiness is strongly correlated with precipitation and solar radiation. We hypothesize that using all three creates multicollinearity; therefore, we test which single variable (e.g., "shine") serves as the most effective proxy for the model.
+
+------------------------------------------------------------------------
+
+# Data analysis.
+
+Our preliminary analysis focuses on a panel dataset combining regional observations with weekly time intervals. - **Conclusions:** We have identified that non-linearities must be addressed, as simple linear regressions might bias estimates for temperature and precipitation. - **Hypothesis Suggestion:** The initial data suggests a "Piecewise" approach is necessary to model structural breaks when temperatures exceed the $30^{\circ}C$ "Hot Day" threshold.
+
+------------------------------------------------------------------------
+
+# Methods.
+
+To solve these tasks, we apply the following: 1. **Pooled OLS & Polynomial Regression:** To capture the parabolic effects of temperature and radiation. 2. **Segmented (Piecewise) Regression:** Specifically for our "Extra Days" hypothesis to model heat stress above $30^{\circ}C$. 3. **Fixed Effects (FE) Model:** To control for time-invariant regional factors like soil quality across Ukraine. 4. **Moderation Analysis:** Using interaction terms ($Yield \times Factor$) to see how natural factors alter the sensitivity of price to yield]. 5. **Correlation Matrix:** To test the $H_1$ of Hypothesis 4 and decide whether to omit cloudiness in favor of rain/shine to maintain model parsimony.
+
+------------------------------------------------------------------------
+
+# Results.
+
+At this stage (April 2, 2026), we have: - Completed the collection of meteorological data via Open-Meteo API and price data from Minfin. - Constructed a unified panel dataset aligned by weekly averages. - Initiated the classification of "Hot" and "Cold" days to test our Extreme Day hypothesis.
+
+------------------------------------------------------------------------
+
+# Conclusions.
+
+Early findings indicate that weather impacts are indeed non-linear, supporting our use of quadratic forms in the model. We have also concluded that high-frequency daily data is necessary to accurately count "extreme" events before aggregating them into the final econometric model.
