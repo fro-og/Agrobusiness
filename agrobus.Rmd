@@ -41,11 +41,26 @@ $H_1$: Cloudiness is strongly correlated with precipitation and solar radiation.
 
 # Data analysis.
 
-Our preliminary analysis focuses on a panel dataset combining regional observations with weekly time intervals. - **Conclusions:** We have identified that non-linearities must be addressed, as simple linear regressions might bias estimates for temperature and precipitation. - **Hypothesis Suggestion:** The initial data suggests a "Piecewise" approach is necessary to model structural breaks when temperatures exceed the $30^{\circ}C$ "Hot Day" threshold.
+Provide your data analysis. What conclusions can be drawn from this analysis? Does this analysis lead to any first conclusions about the research question or suggest any hypotheses worth testing?
+
+Datasets:
+- sowing_area.csv
+- harvested_area.csv
+- harvest.sv
+- crop_capacity.csv
+- ukraine_daily_weather.csv
+- fertiliser_cleaned_kg.csv
+
+capacity(t, w, poruv, moisture, gumus, ferteliser, ph, salt, N)
+
+
+
 
 ------------------------------------------------------------------------
 
 # Methods.
+
+Explain accurately what methods you are using to solve the tasks of interest.
 
 To solve these tasks, we apply the following: 1. **Pooled OLS & Polynomial Regression:** To capture the parabolic effects of temperature and radiation. 2. **Segmented (Piecewise) Regression:** Specifically for our "Extra Days" hypothesis to model heat stress above $30^{\circ}C$. 3. **Fixed Effects (FE) Model:** To control for time-invariant regional factors like soil quality across Ukraine. 4. **Moderation Analysis:** Using interaction terms ($Yield \times Factor$) to see how natural factors alter the sensitivity of price to yield]. 5. **Correlation Matrix:** To test the $H_1$ of Hypothesis 4 and decide whether to omit cloudiness in favor of rain/shine to maintain model parsimony.
 
@@ -53,10 +68,14 @@ To solve these tasks, we apply the following: 1. **Pooled OLS & Polynomial Regre
 
 # Results.
 
+Describe the results you already have obtained at this stage.
+
 At this stage (April 2, 2026), we have: - Completed the collection of meteorological data via Open-Meteo API and price data from Minfin. - Constructed a unified panel dataset aligned by weekly averages. - Initiated the classification of "Hot" and "Cold" days to test our Extreme Day hypothesis.
 
 ------------------------------------------------------------------------
 
 # Conclusions.
+
+What conclusions have you already drawn?
 
 Early findings indicate that weather impacts are indeed non-linear, supporting our use of quadratic forms in the model. We have also concluded that high-frequency daily data is necessary to accurately count "extreme" events before aggregating them into the final econometric model.
