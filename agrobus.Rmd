@@ -77,7 +77,7 @@ This section describes all data sources used in the study: crop statistics (annu
 ### 2.1 Crop Data (annual, by oblast)
 
 | File | Variable | Units | Explanation |
-|------------------|------------------|------------------|------------------|
+|----|----|----|----|
 | `crop_capacity.csv` | Yield | centners/ha | Dependent variable. Already calculated by statistical authorities. |
 | `harvested_area.csv` | Harvested area | hectares | Area from which crop was actually harvested. |
 | `sowing_area.csv` | Sown area | hectares | Area planted (may differ from harvested due to losses). |
@@ -86,75 +86,48 @@ This section describes all data sources used in the study: crop statistics (annu
 
 ```{r}
 # ============================================================
-# Interim Report – Part 1
-# Winter Wheat Yield in Ukraine: Data Description & EDA
-# Updated for new file format (2015–2025, thousands of ha)
+# Interim Report – Part 1  (updated)
+# Changes vs previous version:
+#   1. Endpoint dots removed from all small-multiple plots
+#   2. New section: harvested area as % of total oblast area
 # ============================================================
 
-# ── 0. Libraries ─────────────────────────────────────────────
 library(tidyverse)
 library(lubridate)
 library(patchwork)
 
-# ── 1. Load data ─────────────────────────────────────────────
 data_path <- "."
-
-# New files have 8 leading metadata columns before the year columns:
-# "Показник", "Територіальний розріз", "Одиниця виміру",
-# "Масштабування", "Кількість десяткових знаків",
-# "Спеціальне значення даних", "Примітки часового ряду",
-# "Примітки спостереження", then 2015..2025
-
-years <- as.character(2015:2025)
+years     <- as.character(2015:2025)
 
 META_COLS <- c("indicator", "region", "unit", "scale",
                "decimals", "special", "note_ts", "note_obs")
 
+# ── Load helper ───────────────────────────────────────────────
 read_panel <- function(file, value_name) {
   read_csv(
     file.path(data_path, file),
-    col_names = c(META_COLS, years),
-    skip       = 1,            # skip original header row
+    col_names      = c(META_COLS, years),
+    skip           = 1,
     show_col_types = FALSE
   ) |>
-    # keep only region name and year columns
     select(region, all_of(years)) |>
-    pivot_longer(
-      cols      = all_of(years),
-      names_to  = "year",
-      values_to = value_name
-    ) |>
+    pivot_longer(cols = all_of(years), names_to = "year",
+                 values_to = value_name) |>
     mutate(
       year         = as.integer(year),
-      # replace empty strings and obvious placeholders with NA
       !!value_name := suppressWarnings(as.numeric(.data[[value_name]]))
     ) |>
-    # drop the "Україна" aggregate and years with no data at all
     filter(region != "Україна")
 }
 
-# Yield: centners / ha  (dependent variable — already computed)
-yield <- read_panel("harvest_capacity.csv", "yield_cpha")
-
-# Harvested area: thousands of ha  → convert to ha for consistency
-harv  <- read_panel("harvested_area.csv",  "harv_kha") |>
-  mutate(harv_ha = harv_kha * 1000) |>
-  select(-harv_kha)
-
-# Sown area: thousands of ha  → convert to ha
-sown  <- read_panel("sowing_area.csv",     "sown_kha") |>
-  mutate(sown_ha = sown_kha * 1000) |>
-  select(-sown_kha)
-
-# Keep Ukraine aggregate separately for reference lines
 read_ukraine <- function(file, value_name) {
   read_csv(
     file.path(data_path, file),
-    col_names = c(META_COLS, years),
-    skip       = 1,
+    col_names      = c(META_COLS, years),
+    skip           = 1,
     show_col_types = FALSE
   ) |>
-    filter(.data[["region"]] == "Україна") |>
+    filter(region == "Україна") |>
     select(region, all_of(years)) |>
     pivot_longer(cols = all_of(years), names_to = "year",
                  values_to = value_name) |>
@@ -162,21 +135,16 @@ read_ukraine <- function(file, value_name) {
            !!value_name := suppressWarnings(as.numeric(.data[[value_name]])))
 }
 
-ukr_yield <- read_ukraine("harvest_capacity.csv", "yield_cpha")
-ukr_harv  <- read_ukraine("harvested_area.csv",  "harv_kha")
-ukr_sown  <- read_ukraine("sowing_area.csv",     "sown_kha")
+yield     <- read_panel("harvest_capacity.csv",  "yield_cpha")
+harv      <- read_panel("harvested_area.csv",    "harv_kha") |>
+               mutate(harv_ha = harv_kha * 1000) |> select(-harv_kha)
+sown      <- read_panel("sowing_area.csv",       "sown_kha") |>
+               mutate(sown_ha = sown_kha * 1000) |> select(-sown_kha)
+ukr_yield <- read_ukraine("harvest_capacity.csv","yield_cpha")
 
-# ── 2. Quick data check ───────────────────────────────────────
-cat("Yield: ", nrow(yield), "rows |",
-    n_distinct(yield$region), "regions |",
-    paste(range(yield$year, na.rm = TRUE), collapse = "–"), "\n")
-cat("Sample yield values (Vinnytsia):\n")
-print(yield |> filter(region == "Вінницька") |> select(year, yield_cpha))
-
-# ── 3. Region groups ──────────────────────────────────────────
+# ── Region groups ─────────────────────────────────────────────
 region_groups <- tribble(
   ~region,              ~group,
-  # West
   "Волинська",          "West",
   "Закарпатська",       "West",
   "Івано-Франківська",  "West",
@@ -185,7 +153,6 @@ region_groups <- tribble(
   "Тернопільська",      "West",
   "Хмельницька",        "West",
   "Чернівецька",        "West",
-  # Centre
   "Вінницька",          "Centre",
   "Дніпропетровська",   "Centre",
   "Житомирська",        "Centre",
@@ -196,7 +163,6 @@ region_groups <- tribble(
   "Харківська",         "Centre",
   "Черкаська",          "Centre",
   "Чернігівська",       "Centre",
-  # East / South
   "Донецька",           "East",
   "Запорізька",         "East",
   "Луганська",          "East",
@@ -205,46 +171,40 @@ region_groups <- tribble(
   "Херсонська",         "East"
 )
 
-# ── 4. Colour palette ─────────────────────────────────────────
 GROUP_COLORS <- c(West = "#2c7bb6", Centre = "#d7191c", East = "#1a9641")
 
-# ── 5. Shared theme ───────────────────────────────────────────
+# ── Shared theme ──────────────────────────────────────────────
 theme_small_multiple <- function(base_size = 9) {
   theme_minimal(base_size = base_size) +
     theme(
-      panel.grid.major   = element_line(colour = "grey92", linewidth = 0.3),
-      panel.grid.minor   = element_blank(),
-      panel.border       = element_blank(),
-      panel.background   = element_rect(fill = "white", colour = NA),
-      plot.background    = element_rect(fill = "white", colour = NA),
-      axis.line.x        = element_line(colour = "grey70", linewidth = 0.4),
-      axis.ticks.x       = element_line(colour = "grey70", linewidth = 0.3),
-      axis.ticks.y       = element_blank(),
-      axis.text.x        = element_text(size = 7, colour = "grey40",
-                                        margin = margin(t = 2)),
-      axis.text.y        = element_text(size = 7, colour = "grey40"),
-      axis.title         = element_blank(),
-      strip.text         = element_text(face = "bold", size = 8,
-                                        colour = "grey20",
-                                        margin = margin(b = 3)),
-      strip.background   = element_blank(),
-      strip.placement    = "outside",
-      legend.position    = "none",
-      plot.title         = element_text(face = "bold", size = 11,
-                                        colour = "grey10",
-                                        margin = margin(b = 4)),
-      plot.subtitle      = element_text(size = 8.5, colour = "grey40",
-                                        margin = margin(b = 8)),
-      plot.caption       = element_text(size = 7, colour = "grey55",
-                                        hjust = 0, margin = margin(t = 6)),
-      plot.margin        = margin(10, 12, 8, 10)
+      panel.grid.major  = element_line(colour = "grey92", linewidth = 0.3),
+      panel.grid.minor  = element_blank(),
+      panel.border      = element_blank(),
+      panel.background  = element_rect(fill = "white", colour = NA),
+      plot.background   = element_rect(fill = "white", colour = NA),
+      axis.line.x       = element_line(colour = "grey70", linewidth = 0.4),
+      axis.ticks.x      = element_line(colour = "grey70", linewidth = 0.3),
+      axis.ticks.y      = element_blank(),
+      axis.text.x       = element_text(size = 7, colour = "grey40",
+                                       margin = margin(t = 2)),
+      axis.text.y       = element_text(size = 7, colour = "grey40"),
+      axis.title        = element_blank(),
+      strip.text        = element_text(face = "bold", size = 8,
+                                       colour = "grey20", margin = margin(b = 3)),
+      strip.background  = element_blank(),
+      strip.placement   = "outside",
+      legend.position   = "none",
+      plot.title        = element_text(face = "bold", size = 11,
+                                       colour = "grey10", margin = margin(b = 4)),
+      plot.subtitle     = element_text(size = 8.5, colour = "grey40",
+                                       margin = margin(b = 8)),
+      plot.caption      = element_text(size = 7, colour = "grey55",
+                                       hjust = 0, margin = margin(t = 6)),
+      plot.margin       = margin(10, 12, 8, 10)
     )
 }
 
-# ── 6. Small-multiple helper ──────────────────────────────────
-# Each facet = one focal region (highlighted in group colour).
-# All other regions shown as thin grey background lines.
-
+# ── Small-multiple helper  (NO endpoint dot) ──────────────────
 plot_small_multiple <- function(df, group_map, value_col,
                                 group    = NULL,
                                 title    = "",
@@ -263,65 +223,51 @@ plot_small_multiple <- function(df, group_map, value_col,
 
   focal_color <- if (!is.null(group)) GROUP_COLORS[[group]] else "grey30"
 
-  # Background: every other region repeated across all focal facets
   bg_data <- tibble(facet = focal_regions) |>
     cross_join(
       df |> filter(!is.na(value)) |> select(region, year, value)
     )
 
-  # Focal: one line per facet
   focal_data <- df |>
     filter(region %in% focal_regions, !is.na(value)) |>
     mutate(facet = region)
 
-  # Last valid point per facet for endpoint dot
-  endpoint <- focal_data |>
-    group_by(facet) |>
-    slice_max(year, n = 1, with_ties = FALSE) |>
-    ungroup()
-
   ggplot() +
+    # grey background lines — all other regions
     geom_line(
       data    = bg_data |> filter(region != facet),
       mapping = aes(x = year, y = value, group = region),
       colour  = "grey85", linewidth = 0.35, alpha = 0.9
     ) +
+    # coloured focal line — NO endpoint dot
     geom_line(
       data    = focal_data,
       mapping = aes(x = year, y = value, group = facet),
       colour  = focal_color, linewidth = 1.1, lineend = "round"
-    ) +
-    geom_point(
-      data    = endpoint,
-      mapping = aes(x = year, y = value),
-      colour  = focal_color, size = 2.2,
-      shape = 21, fill = "white", stroke = 1.4
     ) +
     facet_wrap(~facet, scales = "free_y") +
     scale_x_continuous(
       breaks = c(2015, 2017, 2019, 2021, 2023, 2025),
       labels = c("'15", "'17", "'19", "'21", "'23", "'25")
     ) +
-    scale_y_continuous(expand = expansion(mult = c(0.05, 0.12))) +
+    scale_y_continuous(expand = expansion(mult = c(0.05, 0.10))) +
     labs(title = title, subtitle = subtitle, caption = caption) +
     theme_small_multiple()
 }
 
-# ── 7. Yield plots ────────────────────────────────────────────
+# ── Yield plots ───────────────────────────────────────────────
 p_yield_west <- plot_small_multiple(
   yield, region_groups, "yield_cpha", "West",
   title    = "Winter wheat yield — Western oblasts",
   subtitle = "Centners per hectare, 2015–2025. Grey lines = all other regions.",
   caption  = "Source: State Statistics Service of Ukraine"
 )
-
 p_yield_centre <- plot_small_multiple(
   yield, region_groups, "yield_cpha", "Centre",
   title    = "Winter wheat yield — Central oblasts",
   subtitle = "Centners per hectare, 2015–2025. Grey lines = all other regions.",
   caption  = "Source: State Statistics Service of Ukraine"
 )
-
 p_yield_east <- plot_small_multiple(
   yield, region_groups, "yield_cpha", "East",
   title    = "Winter wheat yield — Eastern oblasts",
@@ -329,54 +275,47 @@ p_yield_east <- plot_small_multiple(
   caption  = "Source: State Statistics Service of Ukraine"
 )
 
-# ── 8. Harvested area plots ───────────────────────────────────
+# ── Harvested area plots ──────────────────────────────────────
 p_harv_west <- plot_small_multiple(
   harv, region_groups, "harv_ha", "West",
   title    = "Harvested area — Western oblasts",
-  subtitle = "Hectares, 2015–2025. Grey lines = all other regions.",
+  subtitle = "Hectares, 2015–2025.",
   caption  = "Source: State Statistics Service of Ukraine"
 )
-
 p_harv_centre <- plot_small_multiple(
   harv, region_groups, "harv_ha", "Centre",
   title    = "Harvested area — Central oblasts",
-  subtitle = "Hectares, 2015–2025. Grey lines = all other regions.",
+  subtitle = "Hectares, 2015–2025.",
   caption  = "Source: State Statistics Service of Ukraine"
 )
-
 p_harv_east <- plot_small_multiple(
   harv, region_groups, "harv_ha", "East",
   title    = "Harvested area — Eastern oblasts",
-  subtitle = "Hectares, 2015–2025. Grey lines = all other regions.",
+  subtitle = "Hectares, 2015–2025.",
   caption  = "Source: State Statistics Service of Ukraine"
 )
 
-# ── 9. Sown area plots ────────────────────────────────────────
+# ── Sown area plots ───────────────────────────────────────────
 p_sown_west <- plot_small_multiple(
   sown, region_groups, "sown_ha", "West",
   title    = "Sown area — Western oblasts",
-  subtitle = "Hectares, 2015–2025. Grey lines = all other regions.",
+  subtitle = "Hectares, 2015–2025.",
   caption  = "Source: State Statistics Service of Ukraine"
 )
-
 p_sown_centre <- plot_small_multiple(
   sown, region_groups, "sown_ha", "Centre",
   title    = "Sown area — Central oblasts",
-  subtitle = "Hectares, 2015–2025. Grey lines = all other regions.",
+  subtitle = "Hectares, 2015–2025.",
   caption  = "Source: State Statistics Service of Ukraine"
 )
-
 p_sown_east <- plot_small_multiple(
   sown, region_groups, "sown_ha", "East",
   title    = "Sown area — Eastern oblasts",
-  subtitle = "Hectares, 2015–2025. Grey lines = all other regions.",
+  subtitle = "Hectares, 2015–2025.",
   caption  = "Source: State Statistics Service of Ukraine"
 )
 
-# ── 10. Representative oblasts comparison ─────────────────────
-# One oblast per group with highest mean yield → overlay all three
-# against the Ukraine national average
-
+# ── Representative oblasts ────────────────────────────────────
 rep_oblasts <- yield |>
   left_join(region_groups, by = "region") |>
   filter(!is.na(group), !is.na(yield_cpha)) |>
@@ -389,34 +328,15 @@ rep_data <- yield |>
   filter(!is.na(yield_cpha))
 
 p_representative <- ggplot() +
-  # Ukraine national average (dashed grey)
   geom_line(
     data    = ukr_yield |> filter(!is.na(yield_cpha)),
     mapping = aes(x = year, y = yield_cpha),
     colour  = "grey65", linewidth = 0.7, linetype = "dashed"
   ) +
-  # Representative oblast line
   geom_line(
     data    = rep_data,
     mapping = aes(x = year, y = yield_cpha, colour = group),
     linewidth = 1.2, lineend = "round"
-  ) +
-  # Endpoint dots
-  geom_point(
-    data = rep_data |>
-      group_by(group) |>
-      slice_max(year, n = 1, with_ties = FALSE) |>
-      ungroup(),
-    mapping = aes(x = year, y = yield_cpha, colour = group),
-    size = 2.5, shape = 19
-  ) +
-  # Oblast name labels on right side
-  geom_text(
-    data = rep_oblasts,
-    mapping = aes(label = paste0(region, "\n(", group, ")")),
-    x = Inf, y = Inf,
-    hjust = 1.05, vjust = 1.3,
-    size = 2.8, colour = "grey30"
   ) +
   facet_wrap(~group) +
   scale_colour_manual(values = GROUP_COLORS) +
@@ -430,11 +350,117 @@ p_representative <- ggplot() +
     caption  = "Source: State Statistics Service of Ukraine"
   ) +
   theme_small_multiple(base_size = 10) +
+  theme(strip.text = element_text(face = "bold", size = 10, colour = "grey15"))
+
+# ════════════════════════════════════════════════════════════
+# HARVESTED AREA AS % OF TOTAL OBLAST AREA
+# ════════════════════════════════════════════════════════════
+#
+# Total oblast areas (km²) from official Ukrainian sources.
+# Converted to hectares (1 km² = 100 ha).
+# These are fixed geographic areas — they do not change year to year.
+
+oblast_area_km2 <- tribble(
+  ~region,              ~total_km2,
+  "Вінницька",          26513,
+  "Волинська",          20144,
+  "Дніпропетровська",   31914,
+  "Донецька",           26517,
+  "Житомирська",        29832,
+  "Закарпатська",       12777,
+  "Запорізька",         27180,
+  "Івано-Франківська",  13900,
+  "Київська",           28131,
+  "Кіровоградська",     24588,
+  "Луганська",          26683,
+  "Львівська",          21833,
+  "Миколаївська",       24598,
+  "Одеська",            33310,
+  "Полтавська",         28748,
+  "Рівненська",         20047,
+  "Сумська",            23832,
+  "Тернопільська",      13823,
+  "Харківська",         31415,
+  "Херсонська",         28461,
+  "Хмельницька",        20645,
+  "Черкаська",          20900,
+  "Чернівецька",         8097,
+  "Чернігівська",       31865
+) |>
+  mutate(total_ha = total_km2 * 100)
+
+# Join and compute percentage
+harv_pct <- harv |>
+  left_join(oblast_area_km2 |> select(region, total_ha), by = "region") |>
+  mutate(harv_pct = harv_ha / total_ha * 100) |>
+  filter(!is.na(harv_pct))
+
+# Quick sanity check — print min/max values
+harv_pct |>
+  group_by(region) |>
+  summarise(mean_pct = round(mean(harv_pct, na.rm = TRUE), 1),
+            min_pct  = round(min(harv_pct,  na.rm = TRUE), 1),
+            max_pct  = round(max(harv_pct,  na.rm = TRUE), 1)) |>
+  arrange(desc(mean_pct)) |>
+  print(n = 30)
+
+# ── % plots (same small-multiple helper, new variable) ────────
+p_pct_west <- plot_small_multiple(
+  harv_pct, region_groups, "harv_pct", "West",
+  title    = "Harvested wheat area as % of total oblast area — West",
+  subtitle = "% of total oblast land area under winter wheat harvest, 2015–2025.",
+  caption  = "Oblast areas: official Ukrainian administrative data. Harvested area: SSU."
+)
+p_pct_centre <- plot_small_multiple(
+  harv_pct, region_groups, "harv_pct", "Centre",
+  title    = "Harvested wheat area as % of total oblast area — Centre",
+  subtitle = "% of total oblast land area under winter wheat harvest, 2015–2025.",
+  caption  = "Oblast areas: official Ukrainian administrative data. Harvested area: SSU."
+)
+p_pct_east <- plot_small_multiple(
+  harv_pct, region_groups, "harv_pct", "East",
+  title    = "Harvested wheat area as % of total oblast area — East",
+  subtitle = "% of total oblast land area under winter wheat harvest, 2015–2025.",
+  caption  = "Oblast areas: official Ukrainian administrative data. Harvested area: SSU."
+)
+
+# ── Single cross-group summary: % intensity bar chart ─────────
+# Average % across all years per oblast — useful for one-shot comparison
+harv_pct_avg <- harv_pct |>
+  left_join(region_groups, by = "region") |>
+  group_by(region, group) |>
+  summarise(mean_pct = mean(harv_pct, na.rm = TRUE), .groups = "drop") |>
+  arrange(mean_pct) |>
+  mutate(region = factor(region, levels = region))
+
+p_pct_bar <- ggplot(harv_pct_avg,
+                    aes(x = mean_pct, y = region, fill = group)) +
+  geom_col(width = 0.72, alpha = 0.88) +
+  geom_text(aes(label = paste0(round(mean_pct, 1), "%")),
+            hjust = -0.1, size = 2.6, colour = "grey30") +
+  scale_fill_manual(values = GROUP_COLORS) +
+  scale_x_continuous(
+    expand = expansion(mult = c(0, 0.12)),
+    labels = scales::label_number(suffix = "%")
+  ) +
+  labs(
+    title    = "Average harvested wheat area as % of total oblast area (2015–2025)",
+    subtitle = "Oblasts ordered by intensity. Colour = geographical group.",
+    caption  = "Oblast areas: official Ukrainian administrative data. Harvested area: SSU.",
+    fill     = "Group"
+  ) +
+  theme_small_multiple(base_size = 10) +
   theme(
-    strip.text = element_text(face = "bold", size = 10, colour = "grey15")
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(colour = "grey90", linewidth = 0.3),
+    axis.line.x        = element_blank(),
+    axis.text.y        = element_text(size = 8),
+    legend.position    = "right",
+    legend.text        = element_text(size = 8),
+    legend.title       = element_text(size = 8, face = "bold")
   )
 
-# ── 11. Print all ─────────────────────────────────────────────
+# ── Print all ─────────────────────────────────────────────────
 print(p_yield_west)
 print(p_yield_centre)
 print(p_yield_east)
@@ -445,25 +471,27 @@ print(p_sown_west)
 print(p_sown_centre)
 print(p_sown_east)
 print(p_representative)
+print(p_pct_west)
+print(p_pct_centre)
+print(p_pct_east)
+print(p_pct_bar)
 
-# ── 12. Save (uncomment as needed) ────────────────────────────
-# ggsave("yield_west.png",    p_yield_west,    width=12, height=8, dpi=300, bg="white")
-# ggsave("yield_centre.png",  p_yield_centre,  width=12, height=8, dpi=300, bg="white")
-# ggsave("yield_east.png",    p_yield_east,    width=12, height=8, dpi=300, bg="white")
-# ggsave("harv_west.png",     p_harv_west,     width=12, height=8, dpi=300, bg="white")
-# ggsave("harv_centre.png",   p_harv_centre,   width=12, height=8, dpi=300, bg="white")
-# ggsave("harv_east.png",     p_harv_east,     width=12, height=8, dpi=300, bg="white")
-# ggsave("sown_west.png",     p_sown_west,     width=12, height=8, dpi=300, bg="white")
-# ggsave("sown_centre.png",   p_sown_centre,   width=12, height=8, dpi=300, bg="white")
-# ggsave("sown_east.png",     p_sown_east,     width=12, height=8, dpi=300, bg="white")
-# ggsave("representative.png",p_representative,width=12, height=5, dpi=300, bg="white")
+# ── Save (uncomment as needed) ────────────────────────────────
+# ggsave("yield_west.png",      p_yield_west,    width=12, height=8, dpi=300, bg="white")
+# ggsave("yield_centre.png",    p_yield_centre,  width=12, height=8, dpi=300, bg="white")
+# ggsave("yield_east.png",      p_yield_east,    width=12, height=8, dpi=300, bg="white")
+# ggsave("harv_pct_west.png",   p_pct_west,      width=12, height=8, dpi=300, bg="white")
+# ggsave("harv_pct_centre.png", p_pct_centre,    width=12, height=8, dpi=300, bg="white")
+# ggsave("harv_pct_east.png",   p_pct_east,      width=12, height=8, dpi=300, bg="white")
+# ggsave("harv_pct_bar.png",    p_pct_bar,       width=10, height=8, dpi=300, bg="white")
+# ggsave("representative.png",  p_representative,width=12, height=5, dpi=300, bg="white")
 
 ```
 
 ### 2.2 Daily Weather Data (`daily_weather.csv`)
 
 | Variable | Description | Unit |
-|------------------------|------------------------|------------------------|
+|----|----|----|
 | `region` | Oblast name | text |
 | `date` | Calendar date | YYYY-MM-DD |
 | `temperature_2m_max` | Daily maximum temperature | °C |
@@ -489,7 +517,7 @@ where 5°C is the assumed base temperature for winter wheat development.
 From this deviation, four metrics are calculated for the **full year** (later the vegetation period will be tested):
 
 | Metric | Definition |
-|------------------------------------|------------------------------------|
+|----|----|
 | `days_hot_critical` | Number of days with $t_{dev} > 20$ (extreme heat stress) |
 | `days_cold_critical` | Number of days with $t_{dev} < -15$ (extreme cold stress) |
 | `sum_heat_noncrit` | Sum of $t_{dev}$ for days with $0 < t_{dev} \leq 20$ |
@@ -527,7 +555,8 @@ weather_annual <- weather |>
     mean_et0         = mean(et0_fao_evapotranspiration,  na.rm = TRUE),
     total_et0        = sum(et0_fao_evapotranspiration,   na.rm = TRUE),
     mean_wind        = mean(wind_gusts_10m_max,          na.rm = TRUE),
-    .groups          = "drop"
+    total_radiation = sum(shortwave_radiation_sum, na.rm = TRUE),
+    .groups = "drop"
   )
 
 # Order regions W→E by mean temperature (warmer = further east/south)
@@ -654,15 +683,9 @@ make_tile(weather_annual, "total_precip", "BrBG", 1,
 ```
 
 ```{r}
-p_et0_mean <- make_tile(weather_annual, "mean_et0", "YlOrRd", 1,
-  "Mean daily ET₀  (mm/day)",
-  "Annual average reference evapotranspiration")
-
-p_et0_total <- make_tile(weather_annual, "total_et0", "YlOrRd", 1,
+make_tile(weather_annual, "total_et0", "YlOrRd", 1,
   "Total annual ET₀  (mm/year)",
-  "Sum of daily reference evapotranspiration")
-
-(p_et0_mean | p_et0_total) +
+  "Sum of daily reference evapotranspiration") +
   plot_annotation(
     title   = "Reference evapotranspiration (ET₀) by region and year",
     caption = "Source: ukraine_daily_weather.csv",
@@ -683,6 +706,21 @@ make_tile(weather_annual, "mean_wind", "PuRd", 1,
     theme   = theme(
       plot.background = element_rect(fill = "white", colour = NA),
       plot.caption    = element_text(size = 7.5, colour = "grey55", hjust = 0)
+    )
+  )
+```
+
+```{r}
+make_tile(weather_annual, "total_radiation", "YlOrRd", 1,
+  "Total annual solar radiation  (MJ/m²)",
+  "Sum of daily shortwave radiation") +
+  plot_annotation(
+    title   = "Solar radiation by region and year",
+    caption = "Source: ukraine_daily_weather.csv",
+    theme   = theme(
+      plot.title      = element_text(face = "bold", size = 13, colour = "grey10"),
+      plot.caption    = element_text(size = 7.5, colour = "grey55", hjust = 0),
+      plot.background = element_rect(fill = "white", colour = NA)
     )
   )
 ```
@@ -759,7 +797,144 @@ p_soil <- soil |>
 print(p_soil)
 ```
 
+### 2.4 Correlation structure of all variables
+
+In exploratory research it is important to check correlations not only among variables we expect to be related, but across all pairs — including crop variables, area variables, soil properties, and weather metrics together. Unexpected correlations can reveal data artefacts, suggest omitted mechanisms, or warn about multicollinearity before model estimation.
+
 ------------------------------------------------------------------------
+
+### Setup: build the full panel
+
+```{r build-full-panel}
+library(tidyverse)
+library(corrplot)
+library(GGally)
+library(car)
+
+# ── Region name lookup (Latin weather ↔ Cyrillic crop data) ──
+# Adjust spellings to match exactly what appears in your files
+region_lookup <- tribble(
+  ~region_lat,        ~region_cyr,
+  "Vinnytsia",        "Вінницька",
+  "Volyn",            "Волинська",
+  "Dnipropetrovsk",   "Дніпропетровська",
+  "Donetsk",          "Донецька",
+  "Zhytomyr",         "Житомирська",
+  "Zakarpattia",      "Закарпатська",
+  "Zaporizhzhia",     "Запорізька",
+  "Ivano-Frankivsk",  "Івано-Франківська",
+  "Kyiv",             "Київська",
+  "Kirovohrad",       "Кіровоградська",
+  "Luhansk",          "Луганська",
+  "Lviv",             "Львівська",
+  "Mykolaiv",         "Миколаївська",
+  "Odesa",            "Одеська",
+  "Poltava",          "Полтавська",
+  "Rivne",            "Рівненська",
+  "Sumy",             "Сумська",
+  "Ternopil",         "Тернопільська",
+  "Kharkiv",          "Харківська",
+  "Kherson",          "Херсонська",
+  "Khmelnytskyi",     "Хмельницька",
+  "Cherkasy",         "Черкаська",
+  "Chernivtsi",       "Чернівецька",
+  "Chernihiv",        "Чернігівська"
+)
+
+# ── Weather annual aggregation (all variables) ────────────────
+weather_annual_full <- weather |>
+  mutate(
+    t_mean         = (temperature_2m_max + temperature_2m_min) / 2,
+    t_dev          = t_mean - 5,
+    days_hot_crit  = t_dev > 20,
+    days_cold_crit = t_dev < -15,
+    heat_noncrit   = if_else(t_dev > 0  & t_dev <= 20, t_dev, 0),
+    cold_noncrit   = if_else(t_dev >= -15 & t_dev < 0, t_dev, 0)
+  ) |>
+  group_by(region, year) |>
+  summarise(
+    # Thermal stress metrics
+    days_hot_crit    = sum(days_hot_crit,       na.rm = TRUE),
+    days_cold_crit   = sum(days_cold_crit,      na.rm = TRUE),
+    sum_heat_noncrit = sum(heat_noncrit,        na.rm = TRUE),
+    sum_cold_noncrit = sum(cold_noncrit,        na.rm = TRUE),
+    # Raw temperature levels
+    mean_tmax        = mean(temperature_2m_max, na.rm = TRUE),
+    mean_tmin        = mean(temperature_2m_min, na.rm = TRUE),
+    mean_temp        = mean(t_mean,             na.rm = TRUE),
+    # Other weather
+    total_precip     = sum(precipitation_sum,            na.rm = TRUE),
+    total_et0        = sum(et0_fao_evapotranspiration,   na.rm = TRUE),
+    total_radiation  = sum(shortwave_radiation_sum,      na.rm = TRUE),
+    mean_wind        = mean(wind_gusts_10m_max,          na.rm = TRUE),
+    mean_dewpoint    = mean(dewpoint_2m_mean,            na.rm = TRUE),
+    # Derived
+    water_deficit    = sum(precipitation_sum, na.rm = TRUE) -
+                       sum(et0_fao_evapotranspiration, na.rm = TRUE),
+    diurnal_range    = mean(temperature_2m_max - temperature_2m_min,
+                            na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  filter(year >= 2015)
+
+# ── Harvest ratio ─────────────────────────────────────────────
+harv_ratio_df <- harv |>
+  left_join(sown, by = c("region", "year")) |>
+  mutate(harv_ratio = pmin(harv_ha / sown_ha, 1.05)) |>
+  select(region, year, harv_ha, sown_ha, harv_ratio)
+
+# ── Join everything on Cyrillic region names ──────────────────
+panel_full <- yield |>
+  left_join(harv_ratio_df,  by = c("region", "year")) |>
+  left_join(region_lookup,  by = c("region" = "region_cyr")) |>
+  left_join(weather_annual_full,
+            by = c("region_lat" = "region", "year")) |>
+  left_join(soil |> rename(region_cyr = oblast) |>
+              left_join(region_lookup, by = c("region_cyr" = "region_cyr")),
+            by = c("region" = "region_cyr")) |>
+  filter(!is.na(yield_cpha))
+
+cat("Panel rows:", nrow(panel_full), "\n")
+cat("Regions matched:", n_distinct(panel_full$region[!is.na(panel_full$mean_temp)]), "\n")
+```
+
+```{r cor-weather-only, fig.width=11, fig.height=10}
+weather_vars <- panel_full |>
+  select(
+    `Hot critical days`   = days_hot_crit,
+    `Cold critical days`  = days_cold_crit,
+    `Heat sum`            = sum_heat_noncrit,
+    `Cold sum`            = sum_cold_noncrit,
+    `Mean temp`           = mean_temp,
+    `Diurnal range`       = diurnal_range,
+    `Precipitation`       = total_precip,
+    `ET₀`                 = total_et0,
+    `Solar radiation`     = total_radiation,
+    `Wind gusts`          = mean_wind,
+    `Dewpoint`            = mean_dewpoint,
+    `Water deficit`       = water_deficit
+  ) |>
+  drop_na()
+
+cor_weather <- cor(weather_vars, use = "pairwise.complete.obs")
+
+par(bg = "white", mar = c(0, 0, 3, 0))
+corrplot(
+  cor_weather,
+  method      = "color",
+  type        = "upper",
+  order       = "hclust",
+  tl.col      = "grey15",
+  tl.srt      = 40,
+  tl.cex      = 0.82,
+  cl.cex      = 0.75,
+  addCoef.col = "grey10",
+  number.cex  = 0.65,
+  col         = colorRampPalette(c("#2c7bb6", "white", "#d7191c"))(200),
+  title       = "Correlations among weather variables",
+  mar         = c(0, 0, 2, 0)
+)
+```
 
 # Methods.
 
