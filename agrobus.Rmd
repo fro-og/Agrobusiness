@@ -77,7 +77,7 @@ This section describes all data sources used in the study: crop statistics (annu
 ### 2.1 Crop Data (annual, by oblast)
 
 | File | Variable | Units | Explanation |
-|----|----|----|----|
+|------------------|------------------|------------------|------------------|
 | `crop_capacity.csv` | Yield | centners/ha | Dependent variable. Already calculated by statistical authorities. |
 | `harvested_area.csv` | Harvested area | hectares | Area from which crop was actually harvested. |
 | `sowing_area.csv` | Sown area | hectares | Area planted (may differ from harvested due to losses). |
@@ -491,7 +491,7 @@ print(p_pct_bar)
 ### 2.2 Daily Weather Data (`daily_weather.csv`)
 
 | Variable | Description | Unit |
-|----|----|----|
+|------------------------|------------------------|------------------------|
 | `region` | Oblast name | text |
 | `date` | Calendar date | YYYY-MM-DD |
 | `temperature_2m_max` | Daily maximum temperature | °C |
@@ -517,7 +517,7 @@ where 5°C is the assumed base temperature for winter wheat development.
 From this deviation, four metrics are calculated for the **full year** (later the vegetation period will be tested):
 
 | Metric | Definition |
-|----|----|
+|------------------------------------|------------------------------------|
 | `days_hot_critical` | Number of days with $t_{dev} > 20$ (extreme heat stress) |
 | `days_cold_critical` | Number of days with $t_{dev} < -15$ (extreme cold stress) |
 | `sum_heat_noncrit` | Sum of $t_{dev}$ for days with $0 < t_{dev} \leq 20$ |
@@ -898,43 +898,714 @@ cat("Panel rows:", nrow(panel_full), "\n")
 cat("Regions matched:", n_distinct(panel_full$region[!is.na(panel_full$mean_temp)]), "\n")
 ```
 
-```{r cor-weather-only, fig.width=11, fig.height=10}
-weather_vars <- panel_full |>
-  select(
-    `Hot critical days`   = days_hot_crit,
-    `Cold critical days`  = days_cold_crit,
-    `Heat sum`            = sum_heat_noncrit,
-    `Cold sum`            = sum_cold_noncrit,
-    `Mean temp`           = mean_temp,
-    `Diurnal range`       = diurnal_range,
-    `Precipitation`       = total_precip,
-    `ET₀`                 = total_et0,
-    `Solar radiation`     = total_radiation,
-    `Wind gusts`          = mean_wind,
-    `Dewpoint`            = mean_dewpoint,
-    `Water deficit`       = water_deficit
-  ) |>
+```{r collinearity, fig.width = 10, fig.height = 9}
+# ── Regressor set: only variables entering the model ──────────
+# Four temperature metrics + raw weather + harvest ratio
+# Soil variables are time-invariant and will be absorbed by oblast
+# fixed effects in the panel model, so they are excluded here.
+
+regressors <- c(
+  "days_hot_crit",
+  "days_cold_crit",
+  "sum_heat_noncrit",
+  "sum_cold_noncrit",
+  "total_precip",
+  "total_et0",
+  "total_radiation",
+  "mean_wind",
+  "mean_dewpoint",
+  "harv_ratio"
+)
+
+# keep only columns that exist
+regressors <- intersect(regressors, names(panel_full))
+
+reg_df <- panel_full |>
+  select(all_of(regressors)) |>
   drop_na()
 
-cor_weather <- cor(weather_vars, use = "pairwise.complete.obs")
 
-par(bg = "white", mar = c(0, 0, 3, 0))
+# ── Display labels ────────────────────────────────────────────
+reg_labels <- c(
+  days_hot_crit    = "Hot critical days",
+  days_cold_crit   = "Cold critical days",
+  sum_heat_noncrit = "Accum. heat",
+  sum_cold_noncrit = "Accum. cold",
+  total_precip     = "Precipitation",
+  total_et0        = "ET0",
+  total_radiation  = "Solar radiation",
+  mean_wind        = "Wind gusts",
+  mean_dewpoint    = "Dewpoint",
+  harv_ratio       = "Harvest ratio"
+)
+
+reg_labels <- reg_labels[regressors]
+
+# ── 1. Correlation matrix among regressors ────────────────────
+cor_reg <- cor(reg_df, use = "pairwise.complete.obs")
+rownames(cor_reg) <- colnames(cor_reg) <- reg_labels
+
+par(bg = "white")
 corrplot(
-  cor_weather,
+  cor_reg,
   method      = "color",
   type        = "upper",
   order       = "hclust",
   tl.col      = "grey15",
   tl.srt      = 40,
-  tl.cex      = 0.82,
+  tl.cex      = 0.85,
   cl.cex      = 0.75,
   addCoef.col = "grey10",
-  number.cex  = 0.65,
+  number.cex  = 0.72,
   col         = colorRampPalette(c("#2c7bb6", "white", "#d7191c"))(200),
-  title       = "Correlations among weather variables",
+  title       = "Correlation matrix among regressors",
   mar         = c(0, 0, 2, 0)
 )
 ```
+
+```{r vif, fig.width = 7, fig.height = 5}
+# ── 2. VIF for the full regressor set ─────────────────────────
+# OLS without fixed effects — fixed effects are not needed here
+# because VIF measures regressor redundancy, not causal identification.
+# Adding a constant outcome variable (yield) is enough.
+
+vif_formula <- as.formula(
+  paste("yield_cpha ~", paste(regressors, collapse = " + "))
+)
+
+vif_data <- panel_full |>
+  select(yield_cpha, all_of(regressors)) |>
+  drop_na()
+
+vif_model  <- lm(vif_formula, data = vif_data)
+vif_values <- vif(vif_model)
+
+vif_df <- tibble(
+  variable = names(vif_values),
+  VIF      = vif_values
+) |>
+  mutate(
+    label   = coalesce(reg_labels[variable], variable),
+    concern = case_when(
+      VIF > 10 ~ "High — must address",
+      VIF > 5  ~ "Moderate — monitor",
+      TRUE     ~ "Acceptable"
+    ),
+    concern = factor(concern,
+                     levels = c("Acceptable",
+                                "Moderate — monitor",
+                                "High — must address"))
+  ) |>
+  arrange(desc(VIF))
+
+# table
+knitr::kable(
+  vif_df |> select(label, VIF, concern),
+  digits  = 2,
+  col.names = c("Variable", "VIF", "Assessment"),
+  caption = "Variance Inflation Factors — full regressor set"
+)
+```
+
+```{r vif-plot, fig.width = 8, fig.height = 5}
+# VIF bar chart — easier to read than a table for the report
+ggplot(vif_df,
+       aes(x = VIF,
+           y = fct_reorder(label, VIF),
+           fill = concern)) +
+  geom_col(width = 0.68, alpha = 0.88) +
+  geom_text(aes(label = round(VIF, 1)),
+            hjust = -0.15, size = 3, colour = "grey25") +
+  geom_vline(xintercept = 5,  linetype = "dashed",
+             colour = "grey50", linewidth = 0.5) +
+  geom_vline(xintercept = 10, linetype = "dashed",
+             colour = "#d7191c", linewidth = 0.5) +
+  annotate("text", x = 5.2,  y = 0.6, label = "VIF = 5",
+           hjust = 0, size = 2.6, colour = "grey50") +
+  annotate("text", x = 10.2, y = 0.6, label = "VIF = 10",
+           hjust = 0, size = 2.6, colour = "#d7191c") +
+  scale_fill_manual(values = c(
+    "Acceptable"           = "#1a9641",
+    "Moderate — monitor"   = "#fdae61",
+    "High — must address"  = "#d7191c"
+  )) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title   = "Variance Inflation Factors — full regressor set",
+    x       = "VIF", y = NULL, fill = NULL,
+    caption = "Dashed grey line = VIF 5 threshold. Dashed red line = VIF 10 threshold."
+  ) +
+  theme_small_multiple(base_size = 10) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(colour = "grey90", linewidth = 0.3),
+    axis.line.x        = element_blank(),
+    legend.position    = "top"
+  )
+```
+
+```{r vif-reduced, fig.width = 8, fig.height = 5}
+# ── 3. VIF after dropping the most collinear variables ─────────
+# If ET0 and solar radiation both produce high VIF, drop solar radiation
+# (absorbed by ET0) and recheck. This iterative approach shows clearly
+# which variable is causing the inflation.
+
+regressors_reduced <- regressors[!regressors %in% c("total_radiation",
+                                                      "mean_dewpoint")]
+
+vif_formula2 <- as.formula(
+  paste("yield_cpha ~", paste(regressors_reduced, collapse = " + "))
+)
+
+vif_model2  <- lm(vif_formula2,
+                  data = panel_full |>
+                    select(yield_cpha, all_of(regressors_reduced)) |>
+                    drop_na())
+vif_values2 <- vif(vif_model2)
+
+vif_df2 <- tibble(
+  variable = names(vif_values2),
+  VIF      = vif_values2
+) |>
+  mutate(
+    label   = coalesce(reg_labels[variable], variable),
+    concern = case_when(
+      VIF > 10 ~ "High — must address",
+      VIF > 5  ~ "Moderate — monitor",
+      TRUE     ~ "Acceptable"
+    ),
+    concern = factor(concern,
+                     levels = c("Acceptable",
+                                "Moderate — monitor",
+                                "High — must address"))
+  ) |>
+  arrange(desc(VIF))
+
+ggplot(vif_df2,
+       aes(x = VIF,
+           y = fct_reorder(label, VIF),
+           fill = concern)) +
+  geom_col(width = 0.68, alpha = 0.88) +
+  geom_text(aes(label = round(VIF, 1)),
+            hjust = -0.15, size = 3, colour = "grey25") +
+  geom_vline(xintercept = 5,  linetype = "dashed",
+             colour = "grey50", linewidth = 0.5) +
+  geom_vline(xintercept = 10, linetype = "dashed",
+             colour = "#d7191c", linewidth = 0.5) +
+  annotate("text", x = 5.2,  y = 0.6, label = "VIF = 5",
+           hjust = 0, size = 2.6, colour = "grey50") +
+  annotate("text", x = 10.2, y = 0.6, label = "VIF = 10",
+           hjust = 0, size = 2.6, colour = "#d7191c") +
+  scale_fill_manual(values = c(
+    "Acceptable"           = "#1a9641",
+    "Moderate — monitor"   = "#fdae61",
+    "High — must address"  = "#d7191c"
+  )) +
+  scale_x_continuous(expand = expansion(mult = c(0, 0.15))) +
+  labs(
+    title   = "VIF after removing solar radiation and dewpoint",
+    subtitle = "Shows whether removing the most collinear variables resolves inflation in the remaining set.",
+    x       = "VIF", y = NULL, fill = NULL,
+    caption = "Dashed grey line = VIF 5. Dashed red line = VIF 10."
+  ) +
+  theme_small_multiple(base_size = 10) +
+  theme(
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(colour = "grey90", linewidth = 0.3),
+    axis.line.x        = element_blank(),
+    legend.position    = "top"
+  )
+```
+
+------------------------------------------------------------------------
+
+# 3. Modelling
+
+This section builds a sequence of nested two-way fixed-effects panel models that together address the four hypotheses stated in the introduction. All models use the **within estimator** (region FE + year FE) estimated with the `fixest` package, which handles unbalanced panels and clustered standard errors efficiently. Soil properties are time-invariant within regions and are therefore fully absorbed by region fixed effects — they do not enter the regression formulas explicitly. Model fit is compared using AIC, BIC, overall R², and within-R² (variation explained after removing region and year means).
+
+------------------------------------------------------------------------
+
+## 3.1 Name harmonisation and panel construction
+
+The three data sources use three different region spellings. We extend the existing `region_lookup` table with a `region_soil` column that maps the soil-file names ("Vinnytska") to the same spine, so every join goes through a single lookup and no manual string-fixing is needed elsewhere.
+
+```{r model-name-lookup}
+# ── Complete region lookup table (one source of truth) ─────────
+# This extends the previously defined region_lookup with soil-file spellings.
+# If region_lookup doesn't exist yet (e.g., running chunks out of order),
+# we create it from scratch.
+
+if (!exists("region_lookup")) {
+  # Create base lookup if not already defined
+  region_lookup <- tribble(
+    ~region_lat,        ~region_cyr,
+    "Vinnytsia",        "Вінницька",
+    "Volyn",            "Волинська",
+    "Dnipropetrovsk",   "Дніпропетровська",
+    "Donetsk",          "Донецька",
+    "Zhytomyr",         "Житомирська",
+    "Zakarpattia",      "Закарпатська",
+    "Zaporizhzhia",     "Запорізька",
+    "Ivano-Frankivsk",  "Івано-Франківська",
+    "Kyiv",             "Київська",
+    "Kirovohrad",       "Кіровоградська",
+    "Luhansk",          "Луганська",
+    "Lviv",             "Львівська",
+    "Mykolaiv",         "Миколаївська",
+    "Odesa",            "Одеська",
+    "Poltava",          "Полтавська",
+    "Rivne",            "Рівненська",
+    "Sumy",             "Сумська",
+    "Ternopil",         "Тернопільська",
+    "Kharkiv",          "Харківська",
+    "Kherson",          "Херсонська",
+    "Khmelnytskyi",     "Хмельницька",
+    "Cherkasy",         "Черкаська",
+    "Chernivtsi",       "Чернівецька",
+    "Chernihiv",        "Чернігівська"
+  )
+}
+
+# Add soil-file spellings (Latin, -ska suffix)
+region_lookup <- region_lookup |>
+  mutate(
+    region_soil = case_match(
+      region_lat,
+      "Vinnytsia"       ~ "Vinnytska",
+      "Volyn"           ~ "Volynska",
+      "Dnipropetrovsk"  ~ "Dnipropetrovska",
+      "Donetsk"         ~ "Donetska",
+      "Zhytomyr"        ~ "Zhytomyrska",
+      "Zakarpattia"     ~ "Zakarpatska",
+      "Zaporizhzhia"    ~ "Zaporizka",
+      "Ivano-Frankivsk" ~ "Ivano-Frankivska",
+      "Kyiv"            ~ "Kyivska",
+      "Kirovohrad"      ~ "Kirovohradska",
+      "Luhansk"         ~ "Luhanska",
+      "Lviv"            ~ "Lvivska",
+      "Mykolaiv"        ~ "Mykolaivska",
+      "Odesa"           ~ "Odeska",
+      "Poltava"         ~ "Poltavska",
+      "Rivne"           ~ "Rivnenska",
+      "Sumy"            ~ "Sumska",
+      "Ternopil"        ~ "Ternopilska",
+      "Kharkiv"         ~ "Kharkivska",
+      "Kherson"         ~ "Khersonska",
+      "Khmelnytskyi"    ~ "Khmelnytska",
+      "Cherkasy"        ~ "Cherkaska",
+      "Chernivtsi"      ~ "Chernivetska",
+      "Chernihiv"       ~ "Chernihivska"
+    )
+  )
+
+# Verify — every row should have all three name columns filled
+stopifnot(all(!is.na(region_lookup$region_soil)))
+
+# Optional: show what we have
+cat("Region lookup complete:", nrow(region_lookup), "oblasts\n")
+```
+
+------------------------------------------------------------------------
+
+## 3.2 Growing-season weather aggregates
+
+Winter wheat in Ukraine follows a well-documented phenological calendar:
+
+| Phase | Calendar window | Biological meaning |
+|------------------|------------------------|------------------------------|
+| Pre-sowing buffer | 10 Sep – 30 Sep | Soil moisture build-up before sowing |
+| Sowing → dormancy (**early half**) | 1 Oct – 15 May | Vernalisation, winter dormancy, tillering, green-up |
+| Anthesis → harvest (**late half**) | 16 May – 31 Jul | Heading, grain filling, maturity |
+| Full growing season | 10 Sep – 31 Jul | All of the above combined |
+
+The split at **15 May** is the biologically meaningful boundary between the cold-sensitive vegetative phase and the heat-sensitive reproductive phase. Heat stress during anthesis (Feekes 10.5) has a particularly strong negative effect on grain set, making late-half temperature metrics critical predictors (Hypothesis 3).
+
+```{r season-aggregates}
+library(lubridate)  # ensure day(), month(), year() are available
+
+BASE_TEMP <- 5   # base temperature for winter wheat development
+
+# ── Shared aggregation helper ─────────────────────────────────
+# Applies t_dev logic on any pre-filtered slice of daily data.
+# Returns annual aggregates by region for the specified time window.
+
+agg_weather_slice <- function(df) {
+  df |>
+    mutate(
+      t_mean         = (temperature_2m_max + temperature_2m_min) / 2,
+      t_dev          = t_mean - BASE_TEMP,
+      days_hot_crit  = as.integer(t_dev > 20),
+      days_cold_crit = as.integer(t_dev < -15),
+      heat_noncrit   = if_else(t_dev > 0 & t_dev <= 20, t_dev, 0),
+      cold_noncrit   = if_else(t_dev >= -15 & t_dev < 0, t_dev, 0)
+    ) |>
+    group_by(region, year) |>
+    summarise(
+      days_hot_crit    = sum(days_hot_crit,               na.rm = TRUE),
+      days_cold_crit   = sum(days_cold_crit,              na.rm = TRUE),
+      sum_heat_noncrit = sum(heat_noncrit,                na.rm = TRUE),
+      sum_cold_noncrit = sum(cold_noncrit,                na.rm = TRUE),
+      total_precip     = sum(precipitation_sum,           na.rm = TRUE),
+      total_et0        = sum(et0_fao_evapotranspiration,  na.rm = TRUE),
+      mean_wind        = mean(wind_gusts_10m_max,         na.rm = TRUE),
+      water_deficit    = sum(precipitation_sum,           na.rm = TRUE) - 
+                         sum(et0_fao_evapotranspiration,  na.rm = TRUE),
+      .groups = "drop"
+    )
+}
+
+# ── Reassign days to harvest year ─────────────────────────────
+# Growing season spans September (year Y) to July (year Y+1).
+# Sep–Dec of year Y  → harvest year Y+1
+# Jan–Jul of year Y+1 → harvest year Y+1
+
+weather_tagged <- weather |>
+  mutate(
+    cal_month  = month(date),
+    cal_day    = day(date),
+    cal_year   = year(date),
+    harvest_yr = if_else(cal_month >= 9, cal_year + 1, cal_year)
+  ) |>
+  select(-year)   # remove original calendar-year column
+
+# ── Full growing season: 10 Sep – 31 Jul ──────────────────────
+weather_gs <- weather_tagged |>
+  filter(
+    (cal_month == 9 & cal_day >= 10) |   # from 10 Sep
+    (cal_month %in% c(10, 11, 12)) |     # Oct–Dec
+    (cal_month %in% c(1, 2, 3, 4, 5, 6, 7))  # Jan–Jul (full months)
+  ) |>
+  rename(year = harvest_yr) |>
+  agg_weather_slice() |>
+  rename_with(~ paste0(.x, "_gs"), -c(region, year))
+
+# ── Early half (vegetative): 1 Oct – 15 May ───────────────────
+# Vernalisation, winter dormancy, tillering, green-up
+weather_early <- weather_tagged |>
+  filter(
+    (cal_month %in% c(10, 11, 12)) |     # Oct–Dec
+    (cal_month %in% c(1, 2, 3, 4)) |     # Jan–Apr
+    (cal_month == 5 & cal_day <= 15)     # 1–15 May
+  ) |>
+  rename(year = harvest_yr) |>
+  agg_weather_slice() |>
+  rename_with(~ paste0(.x, "_early"), -c(region, year))
+
+# ── Late half (reproductive): 16 May – 31 Jul ─────────────────
+# Heading, anthesis, grain filling
+weather_late <- weather_tagged |>
+  filter(
+    (cal_month == 5 & cal_day >= 16) |   # 16–31 May
+    (cal_month %in% c(6, 7))             # Jun–Jul
+  ) |>
+  rename(year = harvest_yr) |>
+  agg_weather_slice() |>
+  rename_with(~ paste0(.x, "_late"), -c(region, year))
+
+# ── Diagnostics ───────────────────────────────────────────────
+cat("Growing-season obs (region-years): ", nrow(weather_gs),    "\n")
+cat("Early-half obs (region-years):     ", nrow(weather_early), "\n")
+cat("Late-half obs (region-years):      ", nrow(weather_late),  "\n")
+
+# Quick sanity check: early + late should NOT double-count
+# (they are disjoint by construction: May split at 15th)
+```
+
+------------------------------------------------------------------------
+
+## 3.3 Model panel assembly
+
+We build `panel_model` by extending `panel_full` (constructed in the previous section) with seasonal weather aggregates, sowing area from the already-loaded `sown` object, soil variables joined via the extended lookup, and the war/occupation dummy.
+
+```{r model-panel-assembly}
+library(fixest)
+library(modelsummary)
+
+# ── War / occupation dummy ────────────────────────────────────
+occupied_oblasts_cyr <- c("Донецька", "Луганська",
+                           "Запорізька", "Херсонська")
+
+# ── Build panel_model explicitly from components ──────────────
+panel_model <- yield |>
+  # Harvest ratio (from harv and sown)
+  left_join(harv |> select(region, year, harv_ha), by = c("region", "year")) |>
+  left_join(sown |> select(region, year, sown_ha), by = c("region", "year")) |>
+  mutate(harv_ratio = pmin(harv_ha / sown_ha, 1.05)) |>
+  # Region lookup (Cyrillic → Latin)
+  left_join(region_lookup, by = c("region" = "region_cyr")) |>
+  # Weather (full year)
+  left_join(weather_annual_full, by = c("region_lat" = "region", "year")) |>
+  # Seasonal weather
+  left_join(weather_gs,    by = c("region_lat" = "region", "year")) |>
+  left_join(weather_early, by = c("region_lat" = "region", "year")) |>
+  left_join(weather_late,  by = c("region_lat" = "region", "year")) |>
+  # Soil
+  left_join(soil_joined, by = c("region" = "region_cyr")) |>
+  # Derived variables
+  mutate(
+    war_east   = as.integer(region %in% occupied_oblasts_cyr & year >= 2022),
+    log_yield  = log(yield_cpha),
+    log_sown   = log(sown_ha + 1),
+    region_id  = as.factor(region),
+    year_id    = as.factor(year)
+  ) |>
+  filter(!is.na(yield_cpha), !is.na(days_hot_crit))
+
+# ── Diagnostics ───────────────────────────────────────────────
+cat("Model panel rows: ", nrow(panel_model),            "\n")
+cat("Regions:          ", n_distinct(panel_model$region_id), "\n")
+cat("Years:            ", n_distinct(panel_model$year_id),   "\n")
+cat("War-dummy obs:    ", sum(panel_model$war_east),         "\n")
+cat("Missing sown_ha:  ", sum(is.na(panel_model$sown_ha)),   "\n")
+```
+
+------------------------------------------------------------------------
+
+## 3.4 Model 1 — Full kitchen-sink model
+
+The first model includes all available predictors: full-year weather aggregates (carried over from `panel_full`), sowing area, and the war/occupation dummy. Region and year fixed effects absorb all time-invariant regional heterogeneity (soil quality, geography, historical crop technology) and all common annual shocks (national policy, global climate trends). Because soil variables do not vary within a region over time they are perfectly collinear with region FE and therefore not entered explicitly in any model.
+
+```{r model1}
+m1 <- feols(
+  yield_cpha ~
+    days_hot_crit + days_cold_crit +
+    sum_heat_noncrit + sum_cold_noncrit +
+    total_precip + total_et0 +
+    mean_wind + water_deficit +
+    log_sown + war_east
+  | region_id + year_id,
+  data    = panel_model,
+  cluster = ~region_id
+)
+
+summary(m1)
+```
+
+### 3.4.1 Joint significance test (consistency of all weather variables)
+
+We test whether the complete set of weather regressors is jointly significant after accounting for fixed effects. This is a direct test of Hypothesis 1: if the F-statistic is large and the p-value is small we reject the null that meteorological factors have no collective effect on yield.
+
+```{r model1-ftest}
+# Joint Wald F-test: all eight weather variables simultaneously.
+# H0: beta_hot = beta_cold = beta_heat = beta_cold_nc =
+#     beta_precip = beta_et0 = beta_wind = beta_wdef = 0
+wald(m1,
+     keep = c("days_hot_crit", "days_cold_crit",
+              "sum_heat_noncrit", "sum_cold_noncrit",
+              "total_precip", "total_et0",
+              "mean_wind", "water_deficit"),
+     vcov = "cluster")
+```
+
+------------------------------------------------------------------------
+
+## 3.5 Model 1-log — Log-transformed yield (robustness check)
+
+Re-running Model 1 with `log(yield_cpha)` as the dependent variable checks whether results are sensitive to the functional form. Log specification reduces the leverage of high-yield outlier years and allows coefficients to be interpreted as approximate percentage effects.
+
+```{r model1-log}
+m1_log <- feols(
+  log_yield ~
+    days_hot_crit + days_cold_crit +
+    sum_heat_noncrit + sum_cold_noncrit +
+    total_precip + total_et0 +
+    mean_wind + water_deficit +
+    log_sown + war_east
+  | region_id + year_id,
+  data    = panel_model,
+  cluster = ~region_id
+)
+
+summary(m1_log)
+```
+
+------------------------------------------------------------------------
+
+## 3.6 Model 2 — Without sowing area; full-year vs growing-season weather
+
+Removing sowing area (Model 2a) tests whether it contributed independent information or was merely a noisy proxy for regional scale already captured by region FE. We then replace the full-year weather aggregates with growing-season-only aggregates (Model 2b, window: 10 Sep – 31 Jul). If Model 2b fits better than 2a, growing- season weather is more informative than the full calendar year — supporting Hypothesis 2 (winter weather matters).
+
+```{r model2}
+# 2a: full-year weather, sowing area removed
+m2a <- feols(
+  yield_cpha ~
+    days_hot_crit + days_cold_crit +
+    sum_heat_noncrit + sum_cold_noncrit +
+    total_precip + total_et0 +
+    mean_wind + water_deficit +
+    war_east
+  | region_id + year_id,
+  data    = panel_model,
+  cluster = ~region_id
+)
+
+# 2b: growing-season weather (Sep–Jul), no sowing area
+m2b <- feols(
+  yield_cpha ~
+    days_hot_crit_gs + days_cold_crit_gs +
+    sum_heat_noncrit_gs + sum_cold_noncrit_gs +
+    total_precip_gs + total_et0_gs +
+    mean_wind_gs + water_deficit_gs +
+    war_east
+  | region_id + year_id,
+  data    = panel_model,
+  cluster = ~region_id
+)
+
+# ── Fit comparison table ──────────────────────────────────────
+fit_m1_m2 <- tibble(
+  Model        = c("M1  (full-yr + sown)",
+                   "M2a (full-yr, no sown)",
+                   "M2b (growing season)"),
+  N            = c(nobs(m1),  nobs(m2a),  nobs(m2b)),
+  AIC          = c(AIC(m1),   AIC(m2a),   AIC(m2b)),
+  BIC          = c(BIC(m1),   BIC(m2a),   BIC(m2b)),
+  R2_overall   = c(r2(m1)[["r2"]],   r2(m2a)[["r2"]],   r2(m2b)[["r2"]]),
+  R2_within    = c(r2(m1)[["wr2"]],  r2(m2a)[["wr2"]],  r2(m2b)[["wr2"]]),
+  R2_adj       = c(r2(m1)[["ar2"]],  r2(m2a)[["ar2"]],  r2(m2b)[["ar2"]])
+)
+
+knitr::kable(fit_m1_m2, digits = 3,
+  caption = "Model fit: full-year weather vs growing-season weather")
+```
+
+Lower AIC/BIC and higher within-R² for M2b would support Hypothesis 2: weather during the growing season (including the winter dormancy period) is more predictive than the full calendar year, implying that winter temperature shocks are a meaningful driver of final yield.
+
+------------------------------------------------------------------------
+
+## 3.7 Model 3 — Split growing season (early vs late half)
+
+Model 3 replaces each growing-season aggregate with two separate parameters — one for the early half (Oct – 15 May: vernalisation, dormancy, tillering) and one for the late half (16 May – 31 Jul: heading, anthesis, grain filling). This directly tests Hypothesis 3: if early-half and late-half coefficients differ significantly, the *timing* of weather stress matters and simple annual totals discard useful information.
+
+```{r model3}
+m3 <- feols(
+  yield_cpha ~
+    # Early half (Oct – 15 May)
+    days_hot_crit_early + days_cold_crit_early +
+    sum_heat_noncrit_early + sum_cold_noncrit_early +
+    total_precip_early + total_et0_early +
+    mean_wind_early + water_deficit_early +
+    # Late half (16 May – 31 Jul)
+    days_hot_crit_late + days_cold_crit_late +
+    sum_heat_noncrit_late + sum_cold_noncrit_late +
+    total_precip_late + total_et0_late +
+    mean_wind_late + water_deficit_late +
+    war_east
+  | region_id + year_id,
+  data    = panel_model,
+  cluster = ~region_id
+)
+
+summary(m3)
+```
+
+### 3.7.1 Fit comparison: M2b vs M3
+
+```{r model3-fit}
+fit_m2b_m3 <- tibble(
+  Model      = c("M2b (growing season, pooled)",
+                 "M3  (split: early + late)"),
+  N          = c(nobs(m2b),  nobs(m3)),
+  AIC        = c(AIC(m2b),   AIC(m3)),
+  BIC        = c(BIC(m2b),   BIC(m3)),
+  R2_within  = c(r2(m2b)[["wr2"]], r2(m3)[["wr2"]]),
+  R2_adj     = c(r2(m2b)[["ar2"]], r2(m3)[["ar2"]])
+)
+
+knitr::kable(fit_m2b_m3, digits = 3,
+  caption = "Model fit: pooled growing season vs split season")
+```
+
+### 3.7.2 Wald test — do early and late half coefficients differ?
+
+The joint equality test below asks whether each weather variable has the same effect in the early half as in the late half. Rejection of H₀ provides formal evidence that phase-specific aggregation adds predictive content beyond the pooled growing-season model.
+
+```{r model3-wald}
+# H0: for each variable, beta_early == beta_late
+wald(m3,
+     c("days_hot_crit_early   = days_hot_crit_late",
+       "days_cold_crit_early  = days_cold_crit_late",
+       "sum_heat_noncrit_early = sum_heat_noncrit_late",
+       "sum_cold_noncrit_early = sum_cold_noncrit_late",
+       "total_precip_early    = total_precip_late",
+       "total_et0_early       = total_et0_late",
+       "mean_wind_early       = mean_wind_late",
+       "water_deficit_early   = water_deficit_late"),
+     vcov = "cluster")
+```
+
+------------------------------------------------------------------------
+
+## 3.8 Full model comparison table
+
+The table below places all five specifications side by side. Stars denote statistical significance with clustered standard errors at the oblast level. The bottom rows report the within-R² (variation explained after demeaning by region and year) — the most relevant fit metric for two-way FE models.
+
+```{r model-table, message=FALSE}
+coef_map <- c(
+  # Full-year (M1, M1-log, M2a)
+  days_hot_crit        = "Hot critical days (full yr)",
+  days_cold_crit       = "Cold critical days (full yr)",
+  sum_heat_noncrit     = "Accum. heat (full yr)",
+  sum_cold_noncrit     = "Accum. cold (full yr)",
+  total_precip         = "Precipitation (full yr)",
+  total_et0            = "ET0 (full yr)",
+  mean_wind            = "Wind gusts (full yr)",
+  water_deficit        = "Water deficit (full yr)",
+  log_sown             = "log(Sown area)",
+  # Growing season (M2b)
+  days_hot_crit_gs     = "Hot critical days (GS)",
+  days_cold_crit_gs    = "Cold critical days (GS)",
+  sum_heat_noncrit_gs  = "Accum. heat (GS)",
+  sum_cold_noncrit_gs  = "Accum. cold (GS)",
+  total_precip_gs      = "Precipitation (GS)",
+  total_et0_gs         = "ET0 (GS)",
+  mean_wind_gs         = "Wind (GS)",
+  water_deficit_gs     = "Water deficit (GS)",
+  # Early half (M3)
+  days_hot_crit_early   = "Hot critical days (Oct–May)",
+  days_cold_crit_early  = "Cold critical days (Oct–May)",
+  sum_heat_noncrit_early = "Accum. heat (Oct–May)",
+  sum_cold_noncrit_early = "Accum. cold (Oct–May)",
+  total_precip_early    = "Precipitation (Oct–May)",
+  total_et0_early       = "ET0 (Oct–May)",
+  mean_wind_early       = "Wind (Oct–May)",
+  water_deficit_early   = "Water deficit (Oct–May)",
+  # Late half (M3)
+  days_hot_crit_late    = "Hot critical days (May–Jul)",
+  days_cold_crit_late   = "Cold critical days (May–Jul)",
+  sum_heat_noncrit_late = "Accum. heat (May–Jul)",
+  sum_cold_noncrit_late = "Accum. cold (May–Jul)",
+  total_precip_late     = "Precipitation (May–Jul)",
+  total_et0_late        = "ET0 (May–Jul)",
+  mean_wind_late        = "Wind (May–Jul)",
+  water_deficit_late    = "Water deficit (May–Jul)",
+  # Common
+  war_east             = "War × East oblasts (2022+)"
+)
+
+modelsummary(
+  list(
+    "M1\nfull-yr+sown" = m1,
+    "M1-log\n(log Y)"  = m1_log,
+    "M2a\nfull-yr"     = m2a,
+    "M2b\ngrow.season" = m2b,
+    "M3\nsplit season"  = m3
+  ),
+  coef_map  = coef_map,
+  stars     = c("*" = 0.10, "**" = 0.05, "***" = 0.01),
+  gof_map   = c("nobs", "r.squared", "adj.r.squared", "AIC", "BIC"),
+  title     = "Panel fixed-effects models — winter wheat yield, Ukraine 2015–2024",
+  notes     = paste(
+    "Two-way FE: region + year. Standard errors clustered at oblast level.",
+    "M1-log: dependent variable is log(yield_cpha).",
+    "GS = growing season (10 Sep – 31 Jul of harvest year).",
+    "Early half: 1 Oct – 15 May. Late half: 16 May – 31 Jul.",
+    "*** p<0.01, ** p<0.05, * p<0.10."
+  )
+)
+```
+
+------------------------------------------------------------------------
 
 # Methods.
 
