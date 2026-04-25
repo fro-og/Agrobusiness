@@ -2,63 +2,56 @@
 title: "Agrobusiness"
 author: "Kate, Anastasiia, Max"
 date: "2026-04-02"
-output: html_document
+output:
+  pdf_document:
+    latex_engine: xelatex
+  html_document: default
+header-includes:
+  - \usepackage{fontspec}
+  - \setmainfont{DejaVu Sans}
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE,
-                      fig.width = 12, fig.height = 7, dpi = 150)
+knitr::opts_chunk$set(echo = TRUE, message = FALSE, warning = FALSE, fig.width = 12, fig.height = 7, dpi = 150)
 ```
 
 ------------------------------------------------------------------------
 
-# Hypotheses and objectives description.
+# Hypotheses and objectives description
 
-Our project researches the "story" of wheat market volatility in Ukraine. We are solving the problem of agricultural risk management by identifying which meteorological and human-led factors (like fertilizers) actually drive yields and prices. We aim to provide agribusinesses with a clear framework for data collection: what range of data is mandatory and what is redundant.
+This project investigates the drivers of winter wheat yield volatility across Ukrainian oblasts using panel data for 2015–2024. The core research question is: which meteorological factors actually determine yield outcomes, and which are redundant for practical data collection purposes? The goal is to provide agribusinesses with a parsimonious, empirically grounded framework — identifying what weather data is mandatory to collect and what can be safely dropped.
 
 ### Research Hypotheses
 
 **1. Traditional Significance and Input Factors:**
 
-$H_0$: Meteorological factors (radiation, temperature, humidity), fertilizers, and chemicals have no statistically significant effect on wheat yield or prices.
+$H_0$: Meteorological factors have no statistically significant effect on wheat yield.
 
-$H_1$: These factors have a significant impact, specifically following a non-linear "U-shaped" or parabolic curve where both extremes are detrimental.
+$H_1$: Key weather variables — particularly extreme temperature events and precipitation — have significant effects on yield, with the relationship following a non-linear pattern where both heat and cold extremes are detrimental.
 
-**2. Seasonal Relevancy (The "Winter" Question):**
+**2. Seasonal Relevancy (The "Window" Question):**
 
-$H_0$: Weather data from outside the active spring/summer growing season (e.g., winter temperatures) is not significant for predicting harvest outcomes.
+$H_0$: Weather aggregated over the full calendar year is no less predictive than weather aggregated over the growing season only.
 
-$H_1$: Winter weather is a significant predictor of soil moisture reserves and winter-kill rates, which directly impact the final yield and market price dynamics.
+$H_1$: The growing season window (September–July) captures the agronomically relevant stress periods more precisely than full-year averages, yielding better model fit.
 
-**3. Data Granularity and Extreme Day Classification:** - **Goal:** We test a custom classification where average daily temperature $(T_{max} - T_{min}) / 2$ is used to categorize days as "Extremely Cold" ($< -10^{\circ}C$), "Cold" ($-10^{\circ}C$ to $5^{\circ}C$), "Warm" ($5^{\circ}C$ to $30^{\circ}C$), or "Hot" ($> 30^{\circ}C$).
+**3. Data Granularity and Extreme Day Classification:**
 
-$H_0$: Summing "extra days" (extreme heat/cold) does not provide more predictive power than simple weekly averages.
+$H_0$: Counting extreme temperature days does not provide more predictive power than simple mean temperature.
 
-$H_1$: The frequency of extreme temperature events is a more accurate predictor of yield shocks than mean temperature alone, requiring high-frequency (daily) data collection for valid modeling.
+$H_1$: The frequency of extreme events — days above the critical heat threshold and days below the critical cold threshold — is a more accurate predictor of yield shocks than mean temperature alone, justifying the collection of daily rather than weekly data.
 
-**4. Cloudiness and Correlation Logic (Variable Selection):**
+**4. Redundancy and Variable Selection:**
 
-$H_0$: Cloudiness, rain, and sunshine duration are independent predictors with no significant correlation.
+$H_0$: All weather variables (radiation, ET₀, dewpoint, temperature, precipitation) contribute independent predictive information.
 
-$H_1$: Cloudiness is strongly correlated with precipitation and solar radiation. We hypothesize that using all three creates multicollinearity; therefore, we test which single variable (e.g., "shine") serves as the most effective proxy for the model.
+$H_1$: Solar radiation, ET₀, and dewpoint are strongly collinear with temperature metrics and precipitation, making them redundant. A parsimonious model retaining only temperature stress metrics, precipitation, wind, and soil moisture performs equivalently.
 
-------------------------------------------------------------------------
+**5. Soil Quality as a Moderator:**
 
-# Data analysis.
+$H_0$: Soil properties have no effect on yield once regional fixed effects are controlled for.
 
-Provide your data analysis. What conclusions can be drawn from this analysis? Does this analysis lead to any first conclusions about the research question or suggest any hypotheses worth testing?
-
-**Datasets:**
-
--   sowing_area.csv
-
--   harvested_area.csv
-
--   crop_capacity.csv
-
--   daily_weather.csv
-
--   soil_data.csv
+$H_1$: Static soil properties — particularly organic matter and sand content — affect average yield levels and moderate the sensitivity of yield to weather shocks.
 
 ------------------------------------------------------------------------
 
@@ -66,7 +59,7 @@ Provide your data analysis. What conclusions can be drawn from this analysis? Do
 
 ## 1. Introduction
 
-This study investigates the impact of weather factors on winter wheat yield in Ukraine using panel data for 12 years (2013–2024) at the oblast level. The dependent variable is yield (centners per hectare). Key explanatory variables are derived from daily temperature data following a theoretically motivated aggregation scheme. Soil properties and area variables serve as controls.
+This study investigates the impact of weather factors on winter wheat yield in Ukraine using panel data for 2015–2024 at the oblast level. The dependent variable is yield in centners per hectare. Key explanatory variables are derived from daily temperature and soil moisture data following a theoretically motivated aggregation scheme. Soil properties and area variables serve as controls.
 
 ------------------------------------------------------------------------
 
@@ -77,18 +70,12 @@ This section describes all data sources used in the study: crop statistics (annu
 ### 2.1 Crop Data (annual, by oblast)
 
 | File | Variable | Units | Explanation |
-|----|----|----|----|
+|------------------|------------------|------------------|------------------|
 | `crop_capacity.csv` | Yield | centners/ha | Dependent variable. Already calculated by statistical authorities. |
 | `harvested_area.csv` | Harvested area | hectares | Area from which crop was actually harvested. |
 | `sowing_area.csv` | Sown area | hectares | Area planted (may differ from harvested due to losses). |
 
-**Notes:** One centner = 100 kg. Typical winter wheat yield in Ukraine ranges from 30–80 ц/га. The difference between sown and harvested area indicates crop losses during vegetation.
-
 ```{r}
-# ============================================================
-# Interim Report – Part 1  (updated)
-# ============================================================
-
 library(tidyverse)
 library(lubridate)
 library(patchwork)
@@ -99,7 +86,6 @@ years     <- as.character(2015:2025)
 META_COLS <- c("indicator", "region", "unit", "scale",
                "decimals", "special", "note_ts", "note_obs")
 
-# ── Load helper ───────────────────────────────────────────────
 read_panel <- function(file, value_name) {
   read_csv(
     file.path(data_path, file),
@@ -107,7 +93,7 @@ read_panel <- function(file, value_name) {
     skip           = 1,
     show_col_types = FALSE
   ) |>
-    select(region, all_of(years)) |>
+    dplyr::select(region, all_of(years)) |>
     pivot_longer(cols = all_of(years), names_to = "year",
                  values_to = value_name) |>
     mutate(
@@ -125,21 +111,23 @@ read_ukraine <- function(file, value_name) {
     show_col_types = FALSE
   ) |>
     filter(region == "Україна") |>
-    select(region, all_of(years)) |>
+    dplyr::select(region, all_of(years)) |>
     pivot_longer(cols = all_of(years), names_to = "year",
                  values_to = value_name) |>
     mutate(year = as.integer(year),
            !!value_name := suppressWarnings(as.numeric(.data[[value_name]])))
 }
 
-yield     <- read_panel("harvest_capacity.csv",  "yield_cpha")
-harv      <- read_panel("harvested_area.csv",    "harv_kha") |>
-               mutate(harv_ha = harv_kha * 1000) |> select(-harv_kha)
-sown      <- read_panel("sowing_area.csv",       "sown_kha") |>
-               mutate(sown_ha = sown_kha * 1000) |> select(-sown_kha)
-ukr_yield <- read_ukraine("harvest_capacity.csv","yield_cpha")
+yield     <- read_panel("crop_capacity.csv", "yield_cpha")
+harv      <- read_panel("harvested_area.csv", "harv_kha") |>
+               mutate(harv_ha = harv_kha * 1000) |> 
+               dplyr::select(-harv_kha)
+sown      <- read_panel("sowing_area.csv", "sown_kha") |>
+               mutate(sown_ha = sown_kha * 1000) |> 
+               dplyr::select(-sown_kha)
 
-# ── Region groups ─────────────────────────────────────────────
+ukr_yield <- read_ukraine("crop_capacity.csv", "yield_cpha")
+
 region_groups <- tribble(
   ~region,              ~group,
   "Волинська",          "West",
@@ -170,7 +158,6 @@ region_groups <- tribble(
 
 GROUP_COLORS <- c(West = "#2c7bb6", Centre = "#d7191c", East = "#1a9641")
 
-# ── Shared theme ──────────────────────────────────────────────
 theme_small_multiple <- function(base_size = 9) {
   theme_minimal(base_size = base_size) +
     theme(
@@ -201,7 +188,6 @@ theme_small_multiple <- function(base_size = 9) {
     )
 }
 
-# ── Small-multiple helper  (NO endpoint dot) ──────────────────
 plot_small_multiple <- function(df, group_map, value_col,
                                 group    = NULL,
                                 title    = "",
@@ -222,7 +208,7 @@ plot_small_multiple <- function(df, group_map, value_col,
 
   bg_data <- tibble(facet = focal_regions) |>
     cross_join(
-      df |> filter(!is.na(value)) |> select(region, year, value)
+      df |> filter(!is.na(value)) |> dplyr::select(region, year, value)
     )
 
   focal_data <- df |>
@@ -250,9 +236,6 @@ plot_small_multiple <- function(df, group_map, value_col,
     theme_small_multiple()
 }
 
-# ════════════════════════════════════════════════════════════
-# 1. YIELD PLOTS
-# ════════════════════════════════════════════════════════════
 
 p_yield_west <- plot_small_multiple(
   yield, region_groups, "yield_cpha", "West",
@@ -260,12 +243,14 @@ p_yield_west <- plot_small_multiple(
   subtitle = "Centners per hectare, 2015–2025. Grey lines = all other regions.",
   caption  = "Source: State Statistics Service of Ukraine"
 )
+
 p_yield_centre <- plot_small_multiple(
   yield, region_groups, "yield_cpha", "Centre",
   title    = "Winter wheat yield — Central oblasts",
   subtitle = "Centners per hectare, 2015–2025. Grey lines = all other regions.",
   caption  = "Source: State Statistics Service of Ukraine"
 )
+
 p_yield_east <- plot_small_multiple(
   yield, region_groups, "yield_cpha", "East",
   title    = "Winter wheat yield — Eastern oblasts",
@@ -273,18 +258,14 @@ p_yield_east <- plot_small_multiple(
   caption  = "Source: State Statistics Service of Ukraine"
 )
 
-# ════════════════════════════════════════════════════════════
-# 2. LOSS RATE: (sown - harvested) / sown
-#    (втрати: площа посіву мінус площа збору, поділена на площу посіву)
-# ════════════════════════════════════════════════════════════
 
 loss_rate <- yield |>
-  left_join(sown |> select(region, year, sown_ha), by = c("region", "year")) |>
-  left_join(harv |> select(region, year, harv_ha), by = c("region", "year")) |>
+  left_join(sown |> dplyr::select(region, year, sown_ha), by = c("region", "year")) |>
+  left_join(harv |> dplyr::select(region, year, harv_ha), by = c("region", "year")) |>
   mutate(
     loss_rate = (sown_ha - harv_ha) / sown_ha,
-    loss_rate = if_else(loss_rate < 0, 0, loss_rate),  # обрізаємо негативні (артефакти)
-    loss_rate = if_else(loss_rate > 0.5, 0.5, loss_rate)  # обрізаємо екстремальні
+    loss_rate = if_else(loss_rate < 0, 0, loss_rate),
+    loss_rate = if_else(loss_rate > 0.5, 0.5, loss_rate)
   ) |>
   filter(!is.na(loss_rate))
 
@@ -294,12 +275,14 @@ p_loss_west <- plot_small_multiple(
   subtitle = "(Sown area − Harvested area) / Sown area. 0% = perfect harvest.",
   caption  = "Source: State Statistics Service of Ukraine"
 )
+
 p_loss_centre <- plot_small_multiple(
   loss_rate, region_groups, "loss_rate", "Centre",
   title    = "Crop loss rate — Central oblasts",
   subtitle = "(Sown area − Harvested area) / Sown area. 0% = perfect harvest.",
   caption  = "Source: State Statistics Service of Ukraine"
 )
+
 p_loss_east <- plot_small_multiple(
   loss_rate, region_groups, "loss_rate", "East",
   title    = "Crop loss rate — Eastern oblasts",
@@ -307,10 +290,6 @@ p_loss_east <- plot_small_multiple(
   caption  = "Source: State Statistics Service of Ukraine"
 )
 
-# ════════════════════════════════════════════════════════════
-# 3. SOWN AREA AS % OF TOTAL OBLAST AREA
-#    (площа посіву / площа області)
-# ════════════════════════════════════════════════════════════
 
 oblast_area_km2 <- tribble(
   ~region,              ~total_km2,
@@ -342,7 +321,7 @@ oblast_area_km2 <- tribble(
   mutate(total_ha = total_km2 * 100)
 
 sown_pct <- sown |>
-  left_join(oblast_area_km2 |> select(region, total_ha), by = "region") |>
+  left_join(oblast_area_km2 |> dplyr::select(region, total_ha), by = "region") |>
   mutate(sown_pct = sown_ha / total_ha * 100) |>
   filter(!is.na(sown_pct))
 
@@ -352,12 +331,14 @@ p_sownpct_west <- plot_small_multiple(
   subtitle = "% of total oblast land area planted with winter wheat, 2015–2025.",
   caption  = "Oblast areas: official administrative data. Sown area: SSU."
 )
+
 p_sownpct_centre <- plot_small_multiple(
   sown_pct, region_groups, "sown_pct", "Centre",
   title    = "Sown wheat area as % of total oblast area — Centre",
   subtitle = "% of total oblast land area planted with winter wheat, 2015–2025.",
   caption  = "Oblast areas: official administrative data. Sown area: SSU."
 )
+
 p_sownpct_east <- plot_small_multiple(
   sown_pct, region_groups, "sown_pct", "East",
   title    = "Sown wheat area as % of total oblast area — East",
@@ -365,7 +346,6 @@ p_sownpct_east <- plot_small_multiple(
   caption  = "Oblast areas: official administrative data. Sown area: SSU."
 )
 
-# ── Bar chart: average sown % by oblast ───────────────────────
 sown_pct_avg <- sown_pct |>
   left_join(region_groups, by = "region") |>
   group_by(region, group) |>
@@ -400,71 +380,6 @@ p_sownpct_bar <- ggplot(sown_pct_avg,
     legend.title       = element_text(size = 8, face = "bold")
   )
 
-# ════════════════════════════════════════════════════════════
-# 4. HARVESTED AREA AS % OF TOTAL OBLAST AREA (ваш оригінальний код)
-# ════════════════════════════════════════════════════════════
-
-harv_pct <- harv |>
-  left_join(oblast_area_km2 |> select(region, total_ha), by = "region") |>
-  mutate(harv_pct = harv_ha / total_ha * 100) |>
-  filter(!is.na(harv_pct))
-
-p_harvpct_west <- plot_small_multiple(
-  harv_pct, region_groups, "harv_pct", "West",
-  title    = "Harvested wheat area as % of total oblast area — West",
-  subtitle = "% of total oblast land area under winter wheat harvest, 2015–2025.",
-  caption  = "Oblast areas: official administrative data. Harvested area: SSU."
-)
-p_harvpct_centre <- plot_small_multiple(
-  harv_pct, region_groups, "harv_pct", "Centre",
-  title    = "Harvested wheat area as % of total oblast area — Centre",
-  subtitle = "% of total oblast land area under winter wheat harvest, 2015–2025.",
-  caption  = "Oblast areas: official administrative data. Harvested area: SSU."
-)
-p_harvpct_east <- plot_small_multiple(
-  harv_pct, region_groups, "harv_pct", "East",
-  title    = "Harvested wheat area as % of total oblast area — East",
-  subtitle = "% of total oblast land area under winter wheat harvest, 2015–2025.",
-  caption  = "Oblast areas: official administrative data. Harvested area: SSU."
-)
-
-harv_pct_avg <- harv_pct |>
-  left_join(region_groups, by = "region") |>
-  group_by(region, group) |>
-  summarise(mean_pct = mean(harv_pct, na.rm = TRUE), .groups = "drop") |>
-  arrange(mean_pct) |>
-  mutate(region = factor(region, levels = region))
-
-p_harvpct_bar <- ggplot(harv_pct_avg,
-                        aes(x = mean_pct, y = region, fill = group)) +
-  geom_col(width = 0.72, alpha = 0.88) +
-  geom_text(aes(label = paste0(round(mean_pct, 1), "%")),
-            hjust = -0.1, size = 2.6, colour = "grey30") +
-  scale_fill_manual(values = GROUP_COLORS) +
-  scale_x_continuous(
-    expand = expansion(mult = c(0, 0.12)),
-    labels = scales::label_number(suffix = "%")
-  ) +
-  labs(
-    title    = "Average harvested wheat area as % of total oblast area (2015–2025)",
-    subtitle = "Oblasts ordered by intensity. Colour = geographical group.",
-    caption  = "Oblast areas: official administrative data. Harvested area: SSU.",
-    fill     = "Group"
-  ) +
-  theme_small_multiple(base_size = 10) +
-  theme(
-    panel.grid.major.y = element_blank(),
-    panel.grid.major.x = element_line(colour = "grey90", linewidth = 0.3),
-    axis.line.x        = element_blank(),
-    axis.text.y        = element_text(size = 8),
-    legend.position    = "right",
-    legend.text        = element_text(size = 8),
-    legend.title       = element_text(size = 8, face = "bold")
-  )
-
-# ════════════════════════════════════════════════════════════
-# 5. REPRESENTATIVE OBLASTS (highest mean yield)
-# ════════════════════════════════════════════════════════════
 
 rep_oblasts <- yield |>
   left_join(region_groups, by = "region") |>
@@ -474,7 +389,7 @@ rep_oblasts <- yield |>
   slice_max(mean_y, n = 1, by = group)
 
 rep_data <- yield |>
-  inner_join(rep_oblasts |> select(group, region), by = "region") |>
+  inner_join(rep_oblasts |> dplyr::select(group, region), by = "region") |>
   filter(!is.na(yield_cpha))
 
 p_representative <- ggplot() +
@@ -502,64 +417,47 @@ p_representative <- ggplot() +
   theme_small_multiple(base_size = 10) +
   theme(strip.text = element_text(face = "bold", size = 10, colour = "grey15"))
 
-# ════════════════════════════════════════════════════════════
-# 6. PRINT ALL PLOTS
-# ════════════════════════════════════════════════════════════
 
-# Yield
 print(p_yield_west)
 print(p_yield_centre)
 print(p_yield_east)
 
-# Loss rate (НОВИЙ ГРАФІК)
 print(p_loss_west)
 print(p_loss_centre)
 print(p_loss_east)
 
-# Sown area as % of oblast (НОВИЙ ГРАФІК)
 print(p_sownpct_west)
 print(p_sownpct_centre)
 print(p_sownpct_east)
 print(p_sownpct_bar)
 
-# Harvested area as % of oblast
-print(p_harvpct_west)
-print(p_harvpct_centre)
-print(p_harvpct_east)
-print(p_harvpct_bar)
-
-# Representative
 print(p_representative)
-
-# ════════════════════════════════════════════════════════════
-# 7. SAVE (uncomment as needed)
-# ════════════════════════════════════════════════════════════
-
-# ggsave("yield_west.png",      p_yield_west,     width=12, height=8, dpi=300, bg="white")
-# ggsave("yield_centre.png",    p_yield_centre,   width=12, height=8, dpi=300, bg="white")
-# ggsave("yield_east.png",      p_yield_east,     width=12, height=8, dpi=300, bg="white")
-# 
-# ggsave("loss_west.png",       p_loss_west,      width=12, height=8, dpi=300, bg="white")
-# ggsave("loss_centre.png",     p_loss_centre,    width=12, height=8, dpi=300, bg="white")
-# ggsave("loss_east.png",       p_loss_east,      width=12, height=8, dpi=300, bg="white")
-# 
-# ggsave("sown_pct_west.png",   p_sownpct_west,   width=12, height=8, dpi=300, bg="white")
-# ggsave("sown_pct_centre.png", p_sownpct_centre, width=12, height=8, dpi=300, bg="white")
-# ggsave("sown_pct_east.png",   p_sownpct_east,   width=12, height=8, dpi=300, bg="white")
-# ggsave("sown_pct_bar.png",    p_sownpct_bar,    width=10, height=8, dpi=300, bg="white")
-# 
-# ggsave("harv_pct_west.png",   p_harvpct_west,   width=12, height=8, dpi=300, bg="white")
-# ggsave("harv_pct_centre.png", p_harvpct_centre, width=12, height=8, dpi=300, bg="white")
-# ggsave("harv_pct_east.png",   p_harvpct_east,   width=12, height=8, dpi=300, bg="white")
-# ggsave("harv_pct_bar.png",    p_harvpct_bar,    width=10, height=8, dpi=300, bg="white")
-# 
-# ggsave("representative.png",  p_representative, width=12, height=5, dpi=300, bg="white")
 ```
 
-### 2.2 Daily Weather Data (`daily_weather.csv`)
+#### Yield Patterns and Regional Heterogeneity
+
+The small-multiple yield plots reveal substantial variation across oblasts both in levels and in temporal dynamics. Western regions (Vinnytsia, Khmelnytskyi, Ternopil) consistently show higher yields (45–75 ц/га) with relatively stable trajectories, while eastern oblasts (Odesa, Zaporizhzhia, Donetsk) exhibit lower and more volatile yields (25–55 ц/га), likely reflecting differences in soil quality, moisture availability, and war-related disruptions after 2022.
+
+Critically, the plots demonstrate that **different regions follow different yield trends**. Some oblasts show gradual increases over 2015–2021 (suggesting technology adoption or management improvements), others remain flat, and a few (particularly in the east) display declining pre-war trends. This heterogeneity has direct implications for our modelling strategy: a single common time trend will be insufficient. We will therefore include both a common trend (capturing Ukraine-wide technological progress) and region-specific trends (allowing each oblast's trajectory to diverge).
+
+#### Loss Rates and the Lagged Effect Argument
+
+The loss rate plots — defined as `(sown area − harvested area) / sown area` — show that even in normal years, 2–8% of sown wheat area is lost before harvest. In extreme years (e.g., 2020 in Odesa, 2022 in eastern oblasts), losses exceed 15–20%.
+
+Why does this matter for modelling current-year yield? **Losses in year t−1 can affect yield in year t through farmer behavioural responses.** After a year of high losses, farmers may:
+
+1.  **Increase input intensity** (more fertiliser, better seeds, more frequent fungicide applications) to compensate for lost income or to secure the next harvest
+2.  **Alter sowing decisions** (switch to more resilient varieties, adjust planting dates, change crop rotation)
+3.  **Face financial constraints** that limit their ability to invest in the following season
+
+Conversely, low-loss years may create complacency or reduce the perceived need for intensive management. These dynamics imply that the loss rate from the previous year — which we denote as `loss_lag` — is a legitimate predictor of current yield, capturing unobserved farmer responses that are not directly measured in our data. We will test this hypothesis explicitly in the modelling section by including `loss_lag` as a regressor.
+
+------------------------------------------------------------------------
+
+## 2.2 Daily Weather Data (`daily_weather.csv`) and Soil Moisture
 
 | Variable | Description | Unit |
-|----|----|----|
+|------------------------|------------------------|------------------------|
 | `region` | Oblast name | text |
 | `date` | Calendar date | YYYY-MM-DD |
 | `temperature_2m_max` | Daily maximum temperature | °C |
@@ -572,32 +470,86 @@ print(p_representative)
 | `precipitation_sum` | Daily total precipitation | mm |
 | `shortwave_radiation_sum` | Daily incoming shortwave solar radiation | MJ/m² |
 
-**Notes:** ET0 represents atmospheric evaporative demand — higher values indicate faster water loss from crops. Dewpoint is a direct measure of air moisture (higher values promote fungal diseases). Data cover 2013–2024 for all 24 oblasts.
+**Additional data — soil moisture (`soil_moisture.csv`):**
+
+| Variable | Description | Unit |
+|------------------------|------------------------|------------------------|
+| `region` | Oblast name | text |
+| `date` | Calendar date | YYYY-MM-DD |
+| `soil_moisture_0_7cm_pct` | Volumetric soil moisture (0–7 cm depth) | \% |
+
+**Notes:** ET₀ represents atmospheric evaporative demand — higher values indicate faster water loss from crops. Dewpoint is a direct measure of air moisture (higher values promote fungal diseases). Data cover 2013–2024 for all 24 oblasts. Soil moisture data are sourced from Open-Meteo ERA5-Land archive.
+
+#### Expected Correlations Among Weather Parameters
+
+Understanding correlations helps us avoid multicollinearity in later models:
+
+-   **ET₀, solar radiation, and temperature** — strongly positively correlated. We will select only ET₀ as the representative.
+-   **Precipitation and soil moisture** — moderately correlated (1–3 day lag), but soil moisture captures drought persistence uniquely.
+-   **Dewpoint and temperature** — context-dependent correlation; dewpoint carries disease-pressure information.
+-   **Wind speed** — largely uncorrelated with others; kept for lodging risk.
+-   **Soil moisture vs. temperature/ET₀** — negative correlation (hot conditions deplete soil water).
 
 #### Constructed Weather Metrics (following the research hypothesis)
 
-For each region and year, daily temperature is transformed as:
+**Why aggregate daily data?** Our hypothesis posits that **extreme days matter more than averages**. Using daily data directly would create thousands of predictors. The solution is to aggregate into theoretically grounded stress metrics, preserving non-linear "extreme shock" logic while collapsing 365 days into few annual numbers.
+
+**Information loss recovery:** Aggregation loses timing. We recover this by splitting the year into meaningful periods (winter, early spring, late spring) and calculating metrics separately for each window.
+
+For each region and year, **temperature** is transformed as:
 
 $$ t_{dev} = \frac{T_{max} + T_{min}}{2} - 5 $$
 
 where 5°C is the assumed base temperature for winter wheat development.
 
-From this deviation, four metrics are calculated for the **full year** (later the vegetation period will be tested):
+From this deviation, four temperature metrics are calculated:
 
 | Metric | Definition |
-|----|----|
+|------------------------------------|------------------------------------|
 | `days_hot_critical` | Number of days with $t_{dev} > 20$ (extreme heat stress) |
 | `days_cold_critical` | Number of days with $t_{dev} < -15$ (extreme cold stress) |
 | `sum_heat_noncrit` | Sum of $t_{dev}$ for days with $0 < t_{dev} \leq 20$ |
 | `sum_cold_noncrit` | Sum of $t_{dev}$ for days with $-15 \leq t_{dev} < 0$ |
 
-**Notes:** These variables capture different aspects of temperature stress: critical extremes (counts) and accumulated thermal resources (sums). Thresholds (20°C, -15°C) are based on agronomic literature for winter wheat.
+For **soil moisture**, we apply the **exact same logic** — counting extreme events rather than using raw values:
+
+| Metric | Definition |
+|------------------------------------|------------------------------------|
+| `days_drought` | Number of days with soil moisture \< 20% (severe water stress) |
+| `days_waterlog` | Number of days with soil moisture \> 85% (root asphyxiation risk) |
+| `mean_soil_moisture` | Annual average soil moisture (baseline condition) |
+
+**Why these thresholds?** For winter wheat: - **\<20% soil moisture** — permanent wilting point, stomata close, photosynthesis stops - **\>85% soil moisture** — oxygen depletion in root zone, root rot and fungal diseases
+
+This mirrors our temperature logic: just as we count `days_hot_crit` and `days_cold_crit`, we now count `days_drought` and `days_waterlog` as the water-side equivalents.
+
+**Note on trends:** All weather metrics exhibit trends over time (warming climate). These will be absorbed by common time trends (`t`) and region-specific trends (`region × t`) in the modelling section.
 
 ```{r fig.width=14, fig.height=9}
-# ── Load and aggregate ─────────────────────────────────────
+# ── Load and aggregate weather data ─────────────────────────
 weather <- read_csv("daily_weather.csv", show_col_types = FALSE) |>
   mutate(date = as_date(date), year = year(date)) |>
   filter(year >= 2013, year <= 2024)
+
+# ── Load and aggregate soil moisture data ───────────────────
+# Same logic as temperature: count extreme days, not just averages
+soil_moisture <- read_csv("soil_moisture.csv", show_col_types = FALSE) |>
+  mutate(date = as_date(date), year = year(date)) |>
+  filter(year >= 2013, year <= 2024)
+
+soil_moisture_agg <- soil_moisture |>
+  mutate(
+    # Same extreme-day counting logic as temperature
+    drought_day = soil_moisture_0_7cm_pct < 20,
+    waterlog_day = soil_moisture_0_7cm_pct > 85
+  ) |>
+  group_by(region, year) |>
+  summarise(
+    mean_soil_moisture_pct = mean(soil_moisture_0_7cm_pct, na.rm = TRUE),
+    days_drought = sum(drought_day, na.rm = TRUE),
+    days_waterlog = sum(waterlog_day, na.rm = TRUE),
+    .groups = "drop"
+  )
 
 BASE_TEMP <- 5
 
@@ -612,31 +564,36 @@ weather_annual <- weather |>
   ) |>
   group_by(region, year) |>
   summarise(
+    # Thermal stress metrics
     days_hot_crit    = sum(days_hot_crit,  na.rm = TRUE),
     days_cold_crit   = sum(days_cold_crit, na.rm = TRUE),
     sum_heat_noncrit = sum(heat_noncrit,   na.rm = TRUE),
     sum_cold_noncrit = sum(cold_noncrit,   na.rm = TRUE),
+    # Raw temperature levels
     mean_tmax        = mean(temperature_2m_max,          na.rm = TRUE),
     mean_tmin        = mean(temperature_2m_min,          na.rm = TRUE),
     mean_temp        = mean(t_mean,                      na.rm = TRUE),
+    # Water and energy
     total_precip     = sum(precipitation_sum,            na.rm = TRUE),
-    mean_et0         = mean(et0_fao_evapotranspiration,  na.rm = TRUE),
     total_et0        = sum(et0_fao_evapotranspiration,   na.rm = TRUE),
+    total_radiation  = sum(shortwave_radiation_sum,      na.rm = TRUE),
     mean_wind        = mean(wind_gusts_10m_max,          na.rm = TRUE),
-    total_radiation = sum(shortwave_radiation_sum, na.rm = TRUE),
+    mean_dewpoint    = mean(dewpoint_2m_mean,            na.rm = TRUE),
     .groups = "drop"
-  )
+  ) |>
+  left_join(soil_moisture_agg, by = c("region", "year"))
 
-# Order regions W→E by mean temperature (warmer = further east/south)
+# Order regions W→E by mean temperature
 region_order <- weather_annual |>
   group_by(region) |>
-  summarise(mt = mean(mean_temp)) |>
+  summarise(mt = mean(mean_temp, na.rm = TRUE)) |>
   arrange(mt) |>
   pull(region)
 
 weather_annual <- weather_annual |>
   mutate(region = factor(region, levels = region_order),
          year   = factor(year))
+
 # ── Shared theme ────────────────────────────────────────────
 theme_heatmap <- function(base_size = 9) {
   theme_minimal(base_size = base_size) +
@@ -681,20 +638,22 @@ make_tile <- function(df, metric, palette, direction = 1,
     labs(title = title, subtitle = subtitle) +
     theme_heatmap()
 }
+
+# ── Temperature stress metrics ──────────────────────────────
 p1 <- make_tile(weather_annual, "days_hot_crit", "YlOrRd", 1,
   "Days with extreme heat stress",
-  "t_dev > 20 °C  (mean daily temp > 25 °C) — count of days per year")
+  "t_dev > 20 °C (mean daily temp > 25 °C) — count of days per year")
 
 p2 <- make_tile(weather_annual, "days_cold_crit", "Blues", -1,
   "Days with extreme cold stress",
-  "t_dev < −15 °C  (mean daily temp < −10 °C) — count of days per year")
+  "t_dev < −15 °C (mean daily temp < −10 °C) — count of days per year")
 
 p3 <- make_tile(weather_annual, "sum_heat_noncrit", "YlOrBr", 1,
-  "Accumulated non-critical heat  (growing degree-days)",
+  "Accumulated non-critical heat (growing degree-days)",
   "Sum of t_dev for days where 0 < t_dev ≤ 20 °C — thermal budget for growth")
 
 p4 <- make_tile(weather_annual, "sum_cold_noncrit", "PuBu", -1,
-  "Accumulated non-critical cold  (vernalisation budget)",
+  "Accumulated non-critical cold (vernalisation budget)",
   "Sum of t_dev for days where −15 ≤ t_dev < 0 °C — chilling requirement")
 
 (p1 | p2) / (p3 | p4) +
@@ -702,7 +661,7 @@ p4 <- make_tile(weather_annual, "sum_cold_noncrit", "PuBu", -1,
     title    = "Temperature stress metrics by region and year",
     subtitle = paste0("Derived from daily Tmax / Tmin. Base temperature = ",
                       BASE_TEMP, " °C. Regions ordered cool → warm (W/N to E/S)."),
-    caption  = "Source: ukraine_daily_weather.csv",
+    caption  = "Source: daily_weather.csv",
     theme    = theme(
       plot.title      = element_text(face = "bold", size = 13, colour = "grey10"),
       plot.subtitle   = element_text(size = 9, colour = "grey45"),
@@ -713,22 +672,23 @@ p4 <- make_tile(weather_annual, "sum_cold_noncrit", "PuBu", -1,
 ```
 
 ```{r}
+# ── Raw temperature levels ──────────────────────────────────
 p_tmax <- make_tile(weather_annual, "mean_tmax", "RdYlBu", -1,
-  "Mean daily Tmax  (°C)",
+  "Mean daily Tmax (°C)",
   "Annual average of daily maximum temperature")
 
 p_tmin <- make_tile(weather_annual, "mean_tmin", "RdYlBu", -1,
-  "Mean daily Tmin  (°C)",
+  "Mean daily Tmin (°C)",
   "Annual average of daily minimum temperature")
 
 p_tmean <- make_tile(weather_annual, "mean_temp", "RdYlBu", -1,
-  "Mean daily temperature  (°C)",
+  "Mean daily temperature (°C)",
   "Annual average of (Tmax + Tmin) / 2")
 
 (p_tmax | p_tmin | p_tmean) +
   plot_annotation(
     title   = "Raw temperature levels by region and year",
-    caption = "Source: ukraine_daily_weather.csv",
+    caption = "Source: daily_weather.csv",
     theme   = theme(
       plot.title      = element_text(face = "bold", size = 13, colour = "grey10"),
       plot.caption    = element_text(size = 7.5, colour = "grey55", hjust = 0),
@@ -738,11 +698,12 @@ p_tmean <- make_tile(weather_annual, "mean_temp", "RdYlBu", -1,
 ```
 
 ```{r}
+# ── Precipitation ───────────────────────────────────────────
 make_tile(weather_annual, "total_precip", "BrBG", 1,
-  "Total annual precipitation  (mm)",
+  "Total annual precipitation (mm)",
   "Sum of daily precipitation. Green = wetter, brown = drier.") +
   plot_annotation(
-    caption = "Source: ukraine_daily_weather.csv",
+    caption = "Source: daily_weather.csv",
     theme   = theme(
       plot.background = element_rect(fill = "white", colour = NA),
       plot.caption    = element_text(size = 7.5, colour = "grey55", hjust = 0)
@@ -751,12 +712,13 @@ make_tile(weather_annual, "total_precip", "BrBG", 1,
 ```
 
 ```{r}
+# ── Evapotranspiration ──────────────────────────────────────
 make_tile(weather_annual, "total_et0", "YlOrRd", 1,
-  "Total annual ET₀  (mm/year)",
+  "Total annual ET₀ (mm/year)",
   "Sum of daily reference evapotranspiration") +
   plot_annotation(
     title   = "Reference evapotranspiration (ET₀) by region and year",
-    caption = "Source: ukraine_daily_weather.csv",
+    caption = "Source: daily_weather.csv",
     theme   = theme(
       plot.title      = element_text(face = "bold", size = 13, colour = "grey10"),
       plot.caption    = element_text(size = 7.5, colour = "grey55", hjust = 0),
@@ -766,11 +728,12 @@ make_tile(weather_annual, "total_et0", "YlOrRd", 1,
 ```
 
 ```{r}
+# ── Wind speed ──────────────────────────────────────────────
 make_tile(weather_annual, "mean_wind", "PuRd", 1,
-  "Mean annual maximum wind gusts  (m/s)",
+  "Mean annual maximum wind gusts (m/s)",
   "Annual average of daily maximum wind gust at 10 m height") +
   plot_annotation(
-    caption = "Source: ukraine_daily_weather.csv",
+    caption = "Source: daily_weather.csv",
     theme   = theme(
       plot.background = element_rect(fill = "white", colour = NA),
       plot.caption    = element_text(size = 7.5, colour = "grey55", hjust = 0)
@@ -779,12 +742,13 @@ make_tile(weather_annual, "mean_wind", "PuRd", 1,
 ```
 
 ```{r}
+# ── Solar radiation ─────────────────────────────────────────
 make_tile(weather_annual, "total_radiation", "YlOrRd", 1,
-  "Total annual solar radiation  (MJ/m²)",
+  "Total annual solar radiation (MJ/m²)",
   "Sum of daily shortwave radiation") +
   plot_annotation(
     title   = "Solar radiation by region and year",
-    caption = "Source: ukraine_daily_weather.csv",
+    caption = "Source: daily_weather.csv",
     theme   = theme(
       plot.title      = element_text(face = "bold", size = 13, colour = "grey10"),
       plot.caption    = element_text(size = 7.5, colour = "grey55", hjust = 0),
@@ -794,21 +758,58 @@ make_tile(weather_annual, "total_radiation", "YlOrRd", 1,
 ```
 
 ```{r}
+# ── Soil moisture metrics (same logic as temperature) ───────
+p_soil_mean <- make_tile(weather_annual, "mean_soil_moisture_pct", "BrBG", 1,
+  "Mean annual soil moisture (0-7 cm, %)",
+  "Average volumetric soil moisture. Brown = dry, green = wet.")
+
+p_drought <- make_tile(weather_annual, "days_drought", "YlOrRd", 1,
+  "Days with drought conditions",
+  "Soil moisture < 20% — permanent wilting point (same logic as days_hot_crit)")
+
+p_waterlog <- make_tile(weather_annual, "days_waterlog", "Blues", -1,
+  "Days with waterlogging conditions",
+  "Soil moisture > 85% — root asphyxiation risk (mirroring days_cold_crit logic)")
+
+(p_soil_mean | p_drought) / (p_waterlog | plot_spacer()) +
+  plot_annotation(
+    title   = "Soil moisture metrics by region and year",
+    subtitle = "Following same extreme-day counting logic as temperature stress metrics",
+    caption = "Source: soil_moisture.csv (ERA5-Land via Open-Meteo)",
+    theme   = theme(
+      plot.title      = element_text(face = "bold", size = 13, colour = "grey10"),
+      plot.subtitle   = element_text(size = 9, colour = "grey45"),
+      plot.caption    = element_text(size = 7.5, colour = "grey55", hjust = 0),
+      plot.background = element_rect(fill = "white", colour = NA)
+    )
+  )
+```
+
+**Note on waterlogging detection:** The soil moisture heatmaps show virtually zero days exceeding the 85% waterlogging threshold across all regions and years. This does not imply that floods or waterlogging events did not occur in Ukraine during 2015–2023. Rather, this reflects two limitations of our data: first, the ERA5-Land reanalysis product smooths extreme moisture events, potentially underestimating short-term saturation episodes; second, the 0–7 cm surface layer drains rapidly and does not capture waterlogging in the deeper root zone (20–60 cm), where crop damage actually occurs. Consequently, our days_waterlog metric should be interpreted as a measure of extreme, persistent surface saturation rather than a comprehensive indicator of flood risk. For practical agronomic applications, precipitation intensity (e.g., daily rainfall \>40 mm) or multi-day cumulative rainfall may serve as more reliable proxies for waterlogging risk.
+
+------------------------------------------------------------------------
+
+```{r}
+# ── Summary table ───────────────────────────────────────────
 weather_annual |>
   group_by(region) |>
   summarise(
-    `Hot days`     = round(mean(days_hot_crit),    1),
-    `Cold days`    = round(mean(days_cold_crit),   1),
-    `Heat sum`     = round(mean(sum_heat_noncrit), 0),
-    `Cold sum`     = round(mean(sum_cold_noncrit), 0),
-    `Precip (mm)`  = round(mean(total_precip),     0),
-    `ET₀ (mm/yr)`  = round(mean(total_et0),        0),
-    `Wind (m/s)`   = round(mean(mean_wind),        1)
+    `Hot days`     = round(mean(days_hot_crit, na.rm = TRUE),    1),
+    `Cold days`    = round(mean(days_cold_crit, na.rm = TRUE),   1),
+    `Heat sum`     = round(mean(sum_heat_noncrit, na.rm = TRUE), 0),
+    `Cold sum`     = round(mean(sum_cold_noncrit, na.rm = TRUE), 0),
+    `Precip (mm)`  = round(mean(total_precip, na.rm = TRUE),     0),
+    `ET₀ (mm/yr)`  = round(mean(total_et0, na.rm = TRUE),        0),
+    `Wind (m/s)`   = round(mean(mean_wind, na.rm = TRUE),        1),
+    `Soil moisture (%)` = round(mean(mean_soil_moisture_pct, na.rm = TRUE), 1),
+    `Drought days` = round(mean(days_drought, na.rm = TRUE),     1),
+    `Waterlog days` = round(mean(days_waterlog, na.rm = TRUE),    1)
   ) |>
   arrange(desc(`Hot days`)) |>
-  knitr::kable(caption = "Mean annual weather metrics by oblast (2013–2024, ordered by heat stress days)")
-
+  knitr::kable(caption = "Mean annual weather and soil moisture metrics by oblast (2013–2024, ordered by heat stress days)")
 ```
+
+------------------------------------------------------------------------
 
 ### 2.3 Soil Data (`soil_data.csv`)
 
@@ -830,8 +831,9 @@ Static soil properties by oblast:
 
 **Notes:** Optimal pH for winter wheat is 6.0–7.5. High EC (\>2 dS/m) indicates salinity stress. High ESP (\>15%) causes soil structure degradation. Low C:N ratio (\<15) favors rapid nitrogen release.
 
-```{r}
-# ── 13. Soil properties ──────────────────────────────────────
+```{r soil_plots}
+soil <- read_csv("soil_data.csv", show_col_types = FALSE)
+
 vars_soil <- c("pH", "organic_matter", "total_nitrogen",
                "cec", "clay", "sand", "silt")
 
@@ -860,18 +862,15 @@ p_soil <- soil |>
     panel.grid.major.x = element_line(colour = "grey90", linewidth = 0.3)
   )
 
-# ── 14. Print all plots ──────────────────────────────────────
 
 print(p_soil)
 ```
 
-### 2.4 Correlation structure of all variables
-
-In exploratory research it is important to check correlations not only among variables we expect to be related, but across all pairs — including crop variables, area variables, soil properties, and weather metrics together. Unexpected correlations can reveal data artefacts, suggest omitted mechanisms, or warn about multicollinearity before model estimation.
-
 ------------------------------------------------------------------------
 
-#### Setup: build the full panel
+### 2.4 Correlation structure of all variables
+
+In exploratory research it is important to check correlations not only among variables we expect to be related, but across all pairs — including crop variables, weather metrics, and soil moisture together. Unexpected correlations can reveal data artefacts, suggest omitted mechanisms, or warn about multicollinearity before model estimation.
 
 ```{r build-full-panel}
 library(tidyverse)
@@ -880,7 +879,6 @@ library(GGally)
 library(car)
 
 # ── Region name lookup (Latin weather ↔ Cyrillic crop data) ──
-# Adjust spellings to match exactly what appears in your files
 region_lookup <- tribble(
   ~region_lat,        ~region_cyr,
   "Vinnytsia",        "Вінницька",
@@ -909,7 +907,7 @@ region_lookup <- tribble(
   "Chernihiv",        "Чернігівська"
 )
 
-# ── Weather annual aggregation (all variables) ────────────────
+# ── Weather annual aggregation including soil moisture ────────
 weather_annual_full <- weather |>
   mutate(
     t_mean         = (temperature_2m_max + temperature_2m_min) / 2,
@@ -930,35 +928,45 @@ weather_annual_full <- weather |>
     mean_tmax        = mean(temperature_2m_max, na.rm = TRUE),
     mean_tmin        = mean(temperature_2m_min, na.rm = TRUE),
     mean_temp        = mean(t_mean,             na.rm = TRUE),
-    # Other weather
+    # Water and energy
     total_precip     = sum(precipitation_sum,            na.rm = TRUE),
     total_et0        = sum(et0_fao_evapotranspiration,   na.rm = TRUE),
     total_radiation  = sum(shortwave_radiation_sum,      na.rm = TRUE),
     mean_wind        = mean(wind_gusts_10m_max,          na.rm = TRUE),
     mean_dewpoint    = mean(dewpoint_2m_mean,            na.rm = TRUE),
-    # Derived
-    water_deficit    = sum(precipitation_sum, na.rm = TRUE) -
-                       sum(et0_fao_evapotranspiration, na.rm = TRUE),
-    diurnal_range    = mean(temperature_2m_max - temperature_2m_min,
-                            na.rm = TRUE),
     .groups = "drop"
   ) |>
   filter(year >= 2015)
+
+# ── Soil moisture aggregation (same logic as temperature) ─────
+soil_moisture_agg <- soil_moisture |>
+  mutate(
+    drought_day = soil_moisture_0_7cm_pct < 20,
+    waterlog_day = soil_moisture_0_7cm_pct > 85
+  ) |>
+  group_by(region, year) |>
+  summarise(
+    mean_soil_moisture_pct = mean(soil_moisture_0_7cm_pct, na.rm = TRUE),
+    days_drought = sum(drought_day, na.rm = TRUE),
+    days_waterlog = sum(waterlog_day, na.rm = TRUE),
+    .groups = "drop"
+  )
 
 # ── Harvest ratio ─────────────────────────────────────────────
 harv_ratio_df <- harv |>
   left_join(sown, by = c("region", "year")) |>
   mutate(harv_ratio = pmin(harv_ha / sown_ha, 1.05)) |>
-  select(region, year, harv_ha, sown_ha, harv_ratio)
+  select(region, year, harv_ratio)
 
 # ── Join everything on Cyrillic region names ──────────────────
 panel_full <- yield |>
-  left_join(harv_ratio_df,  by = c("region", "year")) |>
-  left_join(region_lookup,  by = c("region" = "region_cyr")) |>
+  left_join(harv_ratio_df, by = c("region", "year")) |>
+  left_join(region_lookup, by = c("region" = "region_cyr")) |>
   left_join(weather_annual_full,
             by = c("region_lat" = "region", "year")) |>
-  left_join(soil |> rename(region_cyr = oblast) |>
-              left_join(region_lookup, by = c("region_cyr" = "region_cyr")),
+  left_join(soil_moisture_agg,
+            by = c("region_lat" = "region", "year")) |>
+  left_join(soil |> rename(region_cyr = oblast),
             by = c("region" = "region_cyr")) |>
   filter(!is.na(yield_cpha))
 
@@ -967,14 +975,10 @@ cat("Regions matched:", n_distinct(panel_full$region[!is.na(panel_full$mean_temp
 ```
 
 ```{r collinearity, fig.width = 10, fig.height = 9}
-# ── Regressor set: only variables entering the model ──────────
-# Four temperature metrics + raw weather + harvest ratio
-# Soil variables are time-invariant and will be absorbed by oblast
-# fixed effects in the panel model, so they are excluded here.
-
+# ── Regressor set: includes all variables to prove redundancy ──
 regressors <- c(
   "days_hot_crit",
-  "days_cold_crit",
+  "days_cold_crit", 
   "sum_heat_noncrit",
   "sum_cold_noncrit",
   "total_precip",
@@ -982,16 +986,22 @@ regressors <- c(
   "total_radiation",
   "mean_wind",
   "mean_dewpoint",
+  "mean_soil_moisture_pct",
+  "days_drought",
   "harv_ratio"
 )
 
-# keep only columns that exist
+# Keep only columns that exist
 regressors <- intersect(regressors, names(panel_full))
 
 reg_df <- panel_full |>
   select(all_of(regressors)) |>
   drop_na()
 
+# Also create a version with mean_temp for correlation checks
+reg_df_with_temp <- panel_full |>
+  select(all_of(c(regressors, "mean_temp"))) |>
+  drop_na()
 
 # ── Display labels ────────────────────────────────────────────
 reg_labels <- c(
@@ -1004,12 +1014,14 @@ reg_labels <- c(
   total_radiation  = "Solar radiation",
   mean_wind        = "Wind gusts",
   mean_dewpoint    = "Dewpoint",
+  mean_soil_moisture_pct = "Mean soil moisture",
+  days_drought     = "Drought days",
   harv_ratio       = "Harvest ratio"
 )
 
 reg_labels <- reg_labels[regressors]
 
-# ── 1. Correlation matrix among regressors ────────────────────
+# ── Correlation matrix among regressors ────────────────────
 cor_reg <- cor(reg_df, use = "pairwise.complete.obs")
 rownames(cor_reg) <- colnames(cor_reg) <- reg_labels
 
@@ -1020,23 +1032,19 @@ corrplot(
   type        = "upper",
   order       = "hclust",
   tl.col      = "grey15",
-  tl.srt      = 40,
+  tl.srt      = 45,
   tl.cex      = 0.85,
   cl.cex      = 0.75,
   addCoef.col = "grey10",
-  number.cex  = 0.72,
+  number.cex  = 0.7,
   col         = colorRampPalette(c("#2c7bb6", "white", "#d7191c"))(200),
   title       = "Correlation matrix among regressors",
   mar         = c(0, 0, 2, 0)
 )
 ```
 
-```{r vif, fig.width = 7, fig.height = 5}
-# ── 2. VIF for the full regressor set ─────────────────────────
-# OLS without fixed effects — fixed effects are not needed here
-# because VIF measures regressor redundancy, not causal identification.
-# Adding a constant outcome variable (yield) is enough.
-
+```{r vif}
+# ── VIF for the full regressor set ──
 vif_formula <- as.formula(
   paste("yield_cpha ~", paste(regressors, collapse = " + "))
 )
@@ -1058,68 +1066,44 @@ vif_df <- tibble(
       VIF > 10 ~ "High — must address",
       VIF > 5  ~ "Moderate — monitor",
       TRUE     ~ "Acceptable"
-    ),
-    concern = factor(concern,
-                     levels = c("Acceptable",
-                                "Moderate — monitor",
-                                "High — must address"))
+    )
   ) |>
   arrange(desc(VIF))
 
-# table
+# Print VIF table
 knitr::kable(
   vif_df |> select(label, VIF, concern),
   digits  = 2,
-  col.names = c("Variable", "VIF", "Assessment"),
-  caption = "Variance Inflation Factors — full regressor set"
+  col.names = c("Variable", "VIF", "Concern"),
+  caption = "VIF — full set (all weather variables included)"
 )
-```
 
-```{r vif-plot, fig.width = 8, fig.height = 5}
-# VIF bar chart — easier to read than a table for the report
-ggplot(vif_df,
-       aes(x = VIF,
-           y = fct_reorder(label, VIF),
-           fill = concern)) +
-  geom_col(width = 0.68, alpha = 0.88) +
-  geom_text(aes(label = round(VIF, 1)),
-            hjust = -0.15, size = 3, colour = "grey25") +
-  geom_vline(xintercept = 5,  linetype = "dashed",
-             colour = "grey50", linewidth = 0.5) +
-  geom_vline(xintercept = 10, linetype = "dashed",
-             colour = "#d7191c", linewidth = 0.5) +
-  annotate("text", x = 5.2,  y = 0.6, label = "VIF = 5",
-           hjust = 0, size = 2.6, colour = "grey50") +
-  annotate("text", x = 10.2, y = 0.6, label = "VIF = 10",
-           hjust = 0, size = 2.6, colour = "#d7191c") +
-  scale_fill_manual(values = c(
-    "Acceptable"           = "#1a9641",
-    "Moderate — monitor"   = "#fdae61",
-    "High — must address"  = "#d7191c"
-  )) +
-  scale_x_continuous(expand = expansion(mult = c(0, 0.15))) +
-  labs(
-    title   = "Variance Inflation Factors — full regressor set",
-    x       = "VIF", y = NULL, fill = NULL,
-    caption = "Dashed grey line = VIF 5 threshold. Dashed red line = VIF 10 threshold."
-  ) +
-  theme_small_multiple(base_size = 10) +
-  theme(
-    panel.grid.major.y = element_blank(),
-    panel.grid.major.x = element_line(colour = "grey90", linewidth = 0.3),
-    axis.line.x        = element_blank(),
-    legend.position    = "top"
-  )
+# Print key correlations (using reg_df_with_temp which already has all aligned data)
+cat("\n=== Evidence for Removing Variables ===\n")
+cat("Correlation ET0 vs Solar radiation:", 
+    round(cor(reg_df$total_et0, reg_df$total_radiation, use = "complete.obs"), 2), "\n")
+cat("Correlation Dewpoint vs Mean temperature:", 
+    round(cor(reg_df_with_temp$mean_dewpoint, reg_df_with_temp$mean_temp, use = "complete.obs"), 2), "\n")
+cat("Correlation ET0 vs Hot days:", 
+    round(cor(reg_df$total_et0, reg_df$days_hot_crit, use = "complete.obs"), 2), "\n")
+cat("Correlation Solar radiation vs Hot days:", 
+    round(cor(reg_df$total_radiation, reg_df$days_hot_crit, use = "complete.obs"), 2), "\n")
+
+cat("\n=== Soil Moisture Correlations ===\n")
+cat("Mean soil moisture vs Precipitation:", 
+    round(cor(reg_df$mean_soil_moisture_pct, reg_df$total_precip, use = "complete.obs"), 2), "\n")
+cat("Mean soil moisture vs ET0:", 
+    round(cor(reg_df$mean_soil_moisture_pct, reg_df$total_et0, use = "complete.obs"), 2), "\n")
+cat("Drought days vs Hot days:", 
+    round(cor(reg_df$days_drought, reg_df$days_hot_crit, use = "complete.obs"), 2), "\n")
+cat("Drought days vs Precipitation:", 
+    round(cor(reg_df$days_drought, reg_df$total_precip, use = "complete.obs"), 2), "\n")
 ```
 
 ```{r vif-reduced, fig.width = 8, fig.height = 5}
-# ── 3. VIF after dropping the most collinear variables ─────────
-# If ET0 and solar radiation both produce high VIF, drop solar radiation
-# (absorbed by ET0) and recheck. This iterative approach shows clearly
-# which variable is causing the inflation.
-
-regressors_reduced <- regressors[!regressors %in% c("total_radiation",
-                                                      "mean_dewpoint")]
+# ── VIF after removing redundant variables: radiation, dewpoint, and ET0 ──
+# Keeping only precipitation as the water/energy representative
+regressors_reduced <- regressors[!regressors %in% c("total_radiation", "mean_dewpoint", "total_et0")]
 
 vif_formula2 <- as.formula(
   paste("yield_cpha ~", paste(regressors_reduced, collapse = " + "))
@@ -1138,17 +1122,32 @@ vif_df2 <- tibble(
   mutate(
     label   = coalesce(reg_labels[variable], variable),
     concern = case_when(
-      VIF > 10 ~ "High — must address",
-      VIF > 5  ~ "Moderate — monitor",
+      VIF > 10 ~ "High",
+      VIF > 5  ~ "Moderate",
       TRUE     ~ "Acceptable"
-    ),
-    concern = factor(concern,
-                     levels = c("Acceptable",
-                                "Moderate — monitor",
-                                "High — must address"))
+    )
   ) |>
   arrange(desc(VIF))
 
+knitr::kable(
+  vif_df2 |> select(label, VIF, concern),
+  digits  = 2,
+  col.names = c("Variable", "VIF", "Concern"),
+  caption = "VIF after removing solar radiation, dewpoint, and ET0"
+)
+
+cat("\n=== Model Improvement Summary ===\n")
+cat("Maximum VIF before removal:", round(max(vif_df$VIF), 2), "\n")
+cat("Maximum VIF after removal:", round(max(vif_df2$VIF), 2), "\n")
+cat("Variables removed:\n")
+cat("  - total_radiation (correlated with ET0 at r > 0.85)\n")
+cat("  - mean_dewpoint (correlated with temperature at r > 0.70)\n")
+cat("  - total_et0 (correlated with hot days and radiation)\n")
+cat("Remaining water-related variable: total_precip (precipitation)\n")
+```
+
+```{r vif-plot, fig.width = 8, fig.height = 5}
+# VIF bar chart for reduced model
 ggplot(vif_df2,
        aes(x = VIF,
            y = fct_reorder(label, VIF),
@@ -1160,491 +1159,83 @@ ggplot(vif_df2,
              colour = "grey50", linewidth = 0.5) +
   geom_vline(xintercept = 10, linetype = "dashed",
              colour = "#d7191c", linewidth = 0.5) +
-  annotate("text", x = 5.2,  y = 0.6, label = "VIF = 5",
-           hjust = 0, size = 2.6, colour = "grey50") +
-  annotate("text", x = 10.2, y = 0.6, label = "VIF = 10",
-           hjust = 0, size = 2.6, colour = "#d7191c") +
   scale_fill_manual(values = c(
-    "Acceptable"           = "#1a9641",
-    "Moderate — monitor"   = "#fdae61",
-    "High — must address"  = "#d7191c"
+    "Acceptable" = "#1a9641",
+    "Moderate"   = "#fdae61",
+    "High"       = "#d7191c"
   )) +
   scale_x_continuous(expand = expansion(mult = c(0, 0.15))) +
   labs(
-    title   = "VIF after removing solar radiation and dewpoint",
-    subtitle = "Shows whether removing the most collinear variables resolves inflation in the remaining set.",
+    title   = "VIF after removing redundant variables",
+    subtitle = "Solar radiation, dewpoint, and ET0 removed (kept precipitation only)",
     x       = "VIF", y = NULL, fill = NULL,
-    caption = "Dashed grey line = VIF 5. Dashed red line = VIF 10."
+    caption = "Dashed line = VIF 5, Red line = VIF 10"
   ) +
-  theme_small_multiple(base_size = 10) +
+  theme_minimal(base_size = 10) +
   theme(
     panel.grid.major.y = element_blank(),
     panel.grid.major.x = element_line(colour = "grey90", linewidth = 0.3),
-    axis.line.x        = element_blank(),
-    legend.position    = "top"
+    legend.position = "top"
   )
 ```
+
+### Conclusions from Correlation and VIF Analysis
+
+The correlation and VIF analysis reveals several important findings for model specification:
+
+**1. Severe Multicollinearity in Initial Variable Set**
+
+The full model with all weather variables exhibited extreme multicollinearity, with a maximum VIF of **70.25** — far exceeding the conventional threshold of 5-10. This confirms our expectation that variables such as solar radiation, ET0, and dewpoint are largely redundant given the information already captured by temperature metrics and precipitation.
+
+**2. Successful Reduction of Redundant Variables**
+
+After removing solar radiation, dewpoint, and ET0, the maximum VIF dropped dramatically from 70.25 to **6.91** — a tenfold reduction. All remaining variables now fall within acceptable or moderate VIF ranges, indicating that multicollinearity is no longer a concern for model estimation.
+
+**3. Soil Moisture Variables Require Caution**
+
+Both `Drought days` (VIF = 6.91) and `Mean soil moisture` (VIF = 5.95) show moderate multicollinearity. This is expected, as drought conditions are naturally correlated with high temperatures and low precipitation. However, their VIF values remain below 10, meaning they can be retained in the model, but their standard errors will be somewhat inflated. The fact that drought days shows higher VIF than mean soil moisture suggests that the extreme-event count captures information more closely related to other weather variables than the annual average does.
+
+**4. Acceptable Variables for Final Model**
+
+The following variables show good VIF values (all below 2) and can be confidently included: - Temperature stress metrics (hot days, cold days, accumulated heat, accumulated cold) - Precipitation - Wind gusts - Harvest ratio
+
+**5. Implications for Model Specification**
+
+Based on this analysis, our final modelling strategy will: - **Exclude** solar radiation, dewpoint, and ET0 (redundant with temperature metrics) - **Retain** precipitation as the sole water-related variable from standard weather data - **Include** soil moisture metrics (mean and drought days) despite moderate multicollinearity, as they capture unique information about plant-available water that precipitation alone cannot provide - **Monitor** standard errors for soil moisture coefficients, recognising they may be slightly inflated
+
+This parsimonious specification balances theoretical completeness with statistical efficiency, avoiding the inefficiencies of multicollinearity while preserving the core mechanisms hypothesised to affect wheat yield.
 
 ------------------------------------------------------------------------
 
 # 3. Modelling
 
-This section builds a sequence of nested two-way fixed-effects panel models that together address the four hypotheses stated in the introduction. All models use the **within estimator** (region FE + year FE) estimated with the `fixest` package, which handles unbalanced panels and clustered standard errors efficiently.
+This section builds a sequence of OLS regression models with explicit region dummy variables (Київська oblast as the reference category) to analyse the impact of weather on winter wheat yield in Ukraine. Based on the correlation analysis from Section 2.4, we exclude solar radiation, dewpoint, and ET0 due to high multicollinearity with temperature metrics. Precipitation is retained as the sole water-related variable from standard weather data, alongside soil moisture metrics which capture plant-available water.
+
+We proceed in three parts: stationarity and trend (3.1), weather window and aggregation (3.2), and soil variables (3.3).
+
+**Note on standard errors:** All models use plain OLS standard errors. This assumes homoskedasticity and no serial correlation in the error term — an assumption that may not hold perfectly in panel data. Results should be interpreted with this limitation in mind.
 
 ------------------------------------------------------------------------
 
-## 3.0 Hypothesis formalisation
+## 3.0 Setup and panel construction
 
-Before presenting the models, we restate each hypothesis in testable form using our constructed weather metrics.
-
-| Hypothesis | Statement | Variables | Expected sign | Test |
-|----|----|----|----|----|
-| **H₁a** | Extreme heat days reduce yield | `days_hot_crit` | Negative | t-test |
-| **H₁b** | Extreme cold days reduce yield (winter kill) | `days_cold_crit` | Negative | t-test |
-| **H₁c** | Accumulated heat (GDD) increases yield | `sum_heat_noncrit` | Positive | t-test |
-| **H₁d** | Accumulated cold (vernalisation) is necessary for development | `sum_cold_noncrit` | Positive | t-test |
-| **H₂** | Winter weather matters (not just growing season) | All weather variables | Growing season model better | AIC/BIC: M2b vs M2a |
-| **H₃** | Timing of weather stress matters (early vs late half) | All variables split | β_early ≠ β_late | Wald test |
-| **H₄** | Solar radiation is collinear with ET₀ | `total_radiation`, `total_et0` | VIF \> 10 | VIF diagnostics |
-
-**Why no quadratic terms?**
-
-Our approach already captures non-linearity through **threshold values**: - `t_dev > 20°C` → extreme heat (harmful) - `t_dev < -15°C` → extreme cold (harmful) - `0 < t_dev ≤ 20°C` → useful heat - `-15 ≤ t_dev < 0` → useful cold for vernalisation
-
-Quadratic terms would be needed if we used `mean_temp`, but we use more informative aggregates.
-
-------------------------------------------------------------------------
-
-## 3.1 Optimal base temperature selection for thermal aggregates
-
-The base temperature (`BASE_TEMP`) for calculating growing degree days (GDD) is a critical parameter. Winter wheat development typically uses a base of 0°C to 5°C, but the optimal value may vary by region and phenological phase.
-
-### 3.1.1 Testing different base temperatures
-
-We test base temperatures from 0°C to 10°C in 1°C increments to find the value that maximizes model fit.
-
-```{r base-temp-test}
+```{r part3-libs}
 library(tidyverse)
-library(fixest)
-library(patchwork)
-
-# Function to test different base temperatures
-test_base_temp <- function(base_temp, data, phase = "full") {
-  
-  # Select appropriate weather data based on phase
-  if (phase == "full") {
-    weather_data <- weather_full
-    suffix <- ""
-  } else if (phase == "early") {
-    weather_data <- weather_early
-    suffix <- "_early"
-  } else if (phase == "late") {
-    weather_data <- weather_late
-    suffix <- "_late"
-  } else {
-    weather_data <- weather_gs
-    suffix <- "_gs"
-  }
-  
-  # Recalculate thermal aggregates with new base temperature
-  weather_recalc <- weather |>
-    mutate(
-      t_mean = (temperature_2m_max + temperature_2m_min) / 2,
-      t_dev = t_mean - base_temp,
-      heat_noncrit = if_else(t_dev > 0 & t_dev <= 20, t_dev, 0),
-      cold_noncrit = if_else(t_dev >= -15 & t_dev < 0, t_dev, 0)
-    ) |>
-    group_by(region, year) |>
-    summarise(
-      sum_heat_noncrit = sum(heat_noncrit, na.rm = TRUE),
-      sum_cold_noncrit = sum(cold_noncrit, na.rm = TRUE),
-      .groups = "drop"
-    ) |>
-    rename_with(~ paste0(.x, suffix), -c(region, year))
-  
-  # Join with panel
-  panel_test <- panel_model |>
-    select(-ends_with(paste0(suffix))) |>
-    left_join(weather_recalc, by = c("region_lat" = "region", "year"))
-  
-  # Estimate model
-  if (phase == "full") {
-    model <- feols(
-      yield_cpha ~ sum_heat_noncrit + sum_cold_noncrit +
-        days_hot_crit + days_cold_crit +
-        total_precip + total_et0 + mean_wind + water_deficit +
-        log_sown + war_east | region_id + year_id,
-      data = panel_test, cluster = ~region_id
-    )
-  } else if (phase == "early") {
-    model <- feols(
-      yield_cpha ~ sum_heat_noncrit_early + sum_cold_noncrit_early +
-        days_hot_crit_early + days_cold_crit_early +
-        total_precip_early + total_et0_early + 
-        mean_wind_early + water_deficit_early +
-        war_east | region_id + year_id,
-      data = panel_test, cluster = ~region_id
-    )
-  } else if (phase == "late") {
-    model <- feols(
-      yield_cpha ~ sum_heat_noncrit_late + sum_cold_noncrit_late +
-        days_hot_crit_late + days_cold_crit_late +
-        total_precip_late + total_et0_late + 
-        mean_wind_late + water_deficit_late +
-        war_east | region_id + year_id,
-      data = panel_test, cluster = ~region_id
-    )
-  } else {
-    model <- feols(
-      yield_cpha ~ sum_heat_noncrit_gs + sum_cold_noncrit_gs +
-        days_hot_crit_gs + days_cold_crit_gs +
-        total_precip_gs + total_et0_gs + 
-        mean_wind_gs + water_deficit_gs +
-        war_east | region_id + year_id,
-      data = panel_test, cluster = ~region_id
-    )
-  }
-  
-  return(data.frame(
-    base_temp = base_temp,
-    phase = phase,
-    AIC = AIC(model),
-    BIC = BIC(model),
-    r2_within = r2(model)[["wr2"]]
-  ))
-}
-
-# Test base temperatures for each phase
-base_temps <- seq(0, 10, by = 1)
-phases <- c("full", "early", "late", "gs")
-
-results_base <- expand.grid(base_temp = base_temps, phase = phases) |>
-  rowwise() |>
-  mutate(results = list(test_base_temp(base_temp, phase))) |>
-  unnest(cols = c(results))
-
-# Visualise results
-p_base_aic <- results_base |>
-  ggplot(aes(x = base_temp, y = AIC, colour = phase)) +
-  geom_line(linewidth = 1) +
-  geom_point(size = 2) +
-  scale_x_continuous(breaks = base_temps) +
-  labs(
-    title = "Optimal base temperature by phenological phase",
-    subtitle = "Lower AIC indicates better fit",
-    x = "Base temperature (°C)",
-    y = "AIC",
-    colour = "Phase"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-p_base_r2 <- results_base |>
-  ggplot(aes(x = base_temp, y = r2_within, colour = phase)) +
-  geom_line(linewidth = 1) +
-  geom_point(size = 2) +
-  scale_x_continuous(breaks = base_temps) +
-  labs(
-    title = "Within-R² by base temperature",
-    x = "Base temperature (°C)",
-    y = "Within-R²",
-    colour = "Phase"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "bottom")
-
-p_base_aic / p_base_r2
-
-# Find optimal base temperature for each phase
-optimal_base <- results_base |>
-  group_by(phase) |>
-  slice_min(AIC, n = 1) |>
-  select(phase, optimal_base = base_temp, AIC, r2_within)
-
-knitr::kable(optimal_base, digits = 2,
-  caption = "Optimal base temperature by phenological phase")
-```
-
-**Interpretation:** If the optimal base temperature differs between early and late halves, this justifies using **different base temperatures** for different phenological phases — a refinement of our approach.
-
-------------------------------------------------------------------------
-
-## 3.2 Testing different base temperatures for early vs late half
-
-Based on the results above, we test whether using phase-specific base temperatures improves model fit compared to a single base temperature.
-
-```{r base-temp-phase-specific}
-# Optimal bases from previous step (example values — replace with actual results)
-opt_base_early <- optimal_base |> filter(phase == "early") |> pull(optimal_base)
-opt_base_late  <- optimal_base |> filter(phase == "late") |> pull(optimal_base)
-opt_base_gs    <- optimal_base |> filter(phase == "gs") |> pull(optimal_base)
-opt_base_full  <- optimal_base |> filter(phase == "full") |> pull(optimal_base)
-
-# Recalculate with phase-specific base temperatures
-weather_early_opt <- weather |>
-  mutate(
-    t_mean = (temperature_2m_max + temperature_2m_min) / 2,
-    t_dev = t_mean - opt_base_early,
-    heat_noncrit = if_else(t_dev > 0 & t_dev <= 20, t_dev, 0),
-    cold_noncrit = if_else(t_dev >= -15 & t_dev < 0, t_dev, 0)
-  ) |>
-  group_by(region, year) |>
-  summarise(
-    sum_heat_noncrit_early_opt = sum(heat_noncrit, na.rm = TRUE),
-    sum_cold_noncrit_early_opt = sum(cold_noncrit, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-weather_late_opt <- weather |>
-  mutate(
-    t_mean = (temperature_2m_max + temperature_2m_min) / 2,
-    t_dev = t_mean - opt_base_late,
-    heat_noncrit = if_else(t_dev > 0 & t_dev <= 20, t_dev, 0),
-    cold_noncrit = if_else(t_dev >= -15 & t_dev < 0, t_dev, 0)
-  ) |>
-  group_by(region, year) |>
-  summarise(
-    sum_heat_noncrit_late_opt = sum(heat_noncrit, na.rm = TRUE),
-    sum_cold_noncrit_late_opt = sum(cold_noncrit, na.rm = TRUE),
-    .groups = "drop"
-  )
-
-# Add to panel
-panel_model_opt <- panel_model |>
-  left_join(weather_early_opt, by = c("region_lat" = "region", "year")) |>
-  left_join(weather_late_opt, by = c("region_lat" = "region", "year"))
-
-# Model with phase-specific base temperatures
-m3_opt <- feols(
-  yield_cpha ~
-    # Early half with optimal base
-    days_hot_crit_early + days_cold_crit_early +
-    sum_heat_noncrit_early_opt + sum_cold_noncrit_early_opt +
-    total_precip_early + total_et0_early +
-    mean_wind_early + water_deficit_early +
-    # Late half with optimal base
-    days_hot_crit_late + days_cold_crit_late +
-    sum_heat_noncrit_late_opt + sum_cold_noncrit_late_opt +
-    total_precip_late + total_et0_late +
-    mean_wind_late + water_deficit_late +
-    war_east
-  | region_id + year_id,
-  data    = panel_model_opt,
-  cluster = ~region_id
-)
-
-# Compare with standard model (BASE_TEMP = 5)
-comparison_base <- tibble(
-  Model = c("Standard (BASE_TEMP = 5°C)", 
-            paste0("Phase-specific (early=", opt_base_early, "°C, late=", opt_base_late, "°C)")),
-  AIC = c(AIC(m3), AIC(m3_opt)),
-  BIC = c(BIC(m3), BIC(m3_opt)),
-  Within_R2 = c(r2(m3)[["wr2"]], r2(m3_opt)[["wr2"]])
-)
-
-knitr::kable(comparison_base, digits = 2,
-  caption = "Model comparison: standard vs phase-specific base temperatures")
-```
-
-**Conclusion:** If AIC is lower for the phase-specific model, this justifies using different base temperatures for early and late halves.
-
-------------------------------------------------------------------------
-
-## 3.3 Soil variables significance test
-
-Soil properties are time-invariant and thus absorbed by region fixed effects. However, we can test their **interaction** with weather variables or estimate a **random effects** model to assess their direct impact.
-
-### 3.3.1 Random effects model with soil variables
-
-```{r soil-significance}
+library(lubridate)
+library(lmtest)
+library(sandwich)
 library(lme4)
-
-# Random effects model to test soil variables
-# (Fixed effects would drop soil variables due to collinearity)
-re_model <- lmer(
-  yield_cpha ~ 
-    days_hot_crit + days_cold_crit +
-    sum_heat_noncrit + sum_cold_noncrit +
-    total_precip + total_et0 + mean_wind + water_deficit +
-    log_sown + war_east +
-    pH + organic_matter + total_nitrogen + cec + clay + sand +
-    (1 | region) + (1 | year),
-  data = panel_model
-)
-
-summary(re_model)
-
-# Extract fixed effects for soil variables
-soil_coefs <- summary(re_model)$coefficients |>
-  as.data.frame() |>
-  rownames_to_column("variable") |>
-  filter(variable %in% c("pH", "organic_matter", "total_nitrogen", 
-                          "cec", "clay", "sand")) |>
-  select(variable, Estimate, `Std. Error`, `Pr(>|t|)`) |>
-  mutate(
-    significant = case_when(
-      `Pr(>|t|)` < 0.01 ~ "***",
-      `Pr(>|t|)` < 0.05 ~ "**",
-      `Pr(>|t|)` < 0.10 ~ "*",
-      TRUE ~ "ns"
-    ),
-    Estimate = round(Estimate, 3),
-    `Std. Error` = round(`Std. Error`, 3)
-  )
-
-knitr::kable(soil_coefs, digits = 3,
-  caption = "Soil variables significance in random effects model")
+library(modelsummary)
+library(patchwork)
+library(tseries)
+library(car)
+library(corrplot)
+library(fastDummies)
+library(multcomp)
 ```
 
-### 3.3.2 Interaction tests: soil × weather
-
-More importantly, soil properties may **moderate** weather effects. For example, sandy soils drain faster and may be more sensitive to drought.
-
-```{r soil-interactions}
-# Test key interactions
-m_soil_interact <- feols(
-  yield_cpha ~
-    days_hot_crit * organic_matter +
-    days_hot_crit * clay +
-    water_deficit * clay +
-    days_cold_crit * organic_matter +
-    sum_heat_noncrit + sum_cold_noncrit +
-    total_precip + total_et0 + mean_wind +
-    log_sown + war_east
-  | region_id + year_id,
-  data = panel_model,
-  cluster = ~region_id
-)
-
-# Extract interaction terms
-interact_coefs <- summary(m_soil_interact)$coefficients |>
-  as.data.frame() |>
-  rownames_to_column("variable") |>
-  filter(grepl(":", variable)) |>
-  select(variable, Estimate, `Std. Error`, `Pr(>|t|)`)
-
-knitr::kable(interact_coefs, digits = 3,
-  caption = "Soil × weather interaction effects")
-```
-
-**Interpretation of soil effects:** - **Positive coefficient for organic_matter**: Higher organic matter buffers against heat stress - **Negative coefficient for clay × water_deficit**: Clay soils crack under drought, worsening the deficit effect - **Positive coefficient for clay × days_hot_crit**: Clay retains moisture, reducing heat stress impact
-
-------------------------------------------------------------------------
-
-## 3.4 Variable importance analysis
-
-To determine which factors influence yield the most, we standardise all continuous variables and compare coefficients.
-
-```{r variable-importance}
-# Standardise all continuous variables
-panel_std <- panel_model |>
-  mutate(across(
-    c(days_hot_crit, days_cold_crit,
-      sum_heat_noncrit, sum_cold_noncrit,
-      total_precip, total_et0, mean_wind, water_deficit,
-      log_sown, organic_matter, clay, pH),
-    ~ as.numeric(scale(.x)),
-    .names = "{.col}_std"
-  ))
-
-# Model with standardised coefficients
-m_std <- feols(
-  yield_cpha ~
-    days_hot_crit_std + days_cold_crit_std +
-    sum_heat_noncrit_std + sum_cold_noncrit_std +
-    total_precip_std + total_et0_std +
-    mean_wind_std + water_deficit_std +
-    log_sown_std + war_east
-  | region_id + year_id,
-  data = panel_std,
-  cluster = ~region_id
-)
-
-# Extract standardised coefficients
-importance <- summary(m_std)$coefficients |>
-  as.data.frame() |>
-  rownames_to_column("variable") |>
-  filter(variable != "war_east") |>
-  mutate(
-    abs_effect = abs(Estimate),
-    variable_clean = case_when(
-      variable == "days_hot_crit_std" ~ "Hot critical days",
-      variable == "days_cold_crit_std" ~ "Cold critical days",
-      variable == "sum_heat_noncrit_std" ~ "Accumulated heat",
-      variable == "sum_cold_noncrit_std" ~ "Accumulated cold",
-      variable == "total_precip_std" ~ "Precipitation",
-      variable == "total_et0_std" ~ "ET₀",
-      variable == "mean_wind_std" ~ "Wind gusts",
-      variable == "water_deficit_std" ~ "Water deficit",
-      variable == "log_sown_std" ~ "Sown area (log)"
-    )
-  ) |>
-  arrange(desc(abs_effect))
-
-# Visualise importance
-p_importance <- importance |>
-  ggplot(aes(x = abs_effect, 
-             y = reorder(variable_clean, abs_effect),
-             fill = if_else(Estimate > 0, "Positive", "Negative"))) +
-  geom_col(width = 0.7, alpha = 0.85) +
-  geom_text(aes(label = paste0(round(Estimate, 2), " (", 
-                                if_else(`Pr(>|t|)` < 0.05, "sig", "ns"), ")")),
-            hjust = -0.1, size = 3) +
-  scale_fill_manual(values = c("Positive" = "#1a9641", "Negative" = "#d7191c")) +
-  scale_x_continuous(expand = expansion(mult = c(0, 0.15))) +
-  labs(
-    title = "Variable importance: standardised coefficients",
-    subtitle = "Bar length = absolute effect size. Values = coefficient (sig = p<0.05, ns = not significant).",
-    x = "Standardised coefficient (absolute value)",
-    y = NULL,
-    fill = "Effect direction"
-  ) +
-  theme_minimal() +
-  theme(
-    panel.grid.major.y = element_blank(),
-    legend.position = "top"
-  )
-
-p_importance
-
-# Create a ranked summary table
-importance_table <- importance |>
-  select(variable_clean, Estimate, `Std. Error`, `Pr(>|t|)`, abs_effect) |>
-  mutate(
-    significance = case_when(
-      `Pr(>|t|)` < 0.01 ~ "***",
-      `Pr(>|t|)` < 0.05 ~ "**",
-      `Pr(>|t|)` < 0.10 ~ "*",
-      TRUE ~ "ns"
-    ),
-    Estimate = round(Estimate, 3),
-    `Std. Error` = round(`Std. Error`, 3)
-  ) |>
-  arrange(desc(abs_effect)) |>
-  select(-abs_effect)
-
-knitr::kable(importance_table, digits = 3,
-  caption = "Variable importance ranking (standardised coefficients)")
-```
-
-------------------------------------------------------------------------
-
-## 3.5 Data sources and panel construction
-
-We combine five data sources into a unified panel at the oblast-year level:
-
-| Source | Variables | Time span | Join key |
-|----|----|----|----|
-| Crop statistics | Yield (centners/ha), harvested area, sown area | 2015–2025 | region (Cyrillic), year |
-| Daily weather | Temperature, precipitation, ET₀, radiation, wind, dewpoint | 2015–2024 | region (Latin), date |
-| Soil properties | pH, organic matter, nitrogen, CEC, texture, salinity | static | region (Cyrillic) |
-| Oblast areas | Total administrative area (km²) | static | region (Cyrillic) |
-| War dummy | 2022+ occupation of Eastern oblasts | 2015–2025 | region, year |
-
-### 3.5.1 Region name harmonisation
-
-```{r model-name-lookup}
-# Complete region lookup table (one source of truth)
+```{r part3-setup}
+# ── Region lookup ─────────────────────────────────────────────
 region_lookup <- tribble(
   ~region_lat,        ~region_cyr,          ~region_soil,
   "Vinnytsia",        "Вінницька",          "Vinnytska",
@@ -1673,427 +1264,766 @@ region_lookup <- tribble(
   "Chernihiv",        "Чернігівська",       "Chernihivska"
 )
 
-cat("Region lookup complete:", nrow(region_lookup), "oblasts\n")
-```
-
-### 3.5.2 Soil data preparation
-
-```{r soil-prep}
+# ── Soil ──────────────────────────────────────────────────────
 soil <- read_csv("soil_data.csv", show_col_types = FALSE)
+names(soil)[names(soil) == "oblast"] <- "region"
 
-soil_joined <- soil |>
-  rename(region_soil = oblast) |>
-  left_join(region_lookup |> select(region_soil, region_cyr), 
-            by = "region_soil") |>
-  select(-region_soil) |>
-  rename(region = region_cyr)
-
-# Summary statistics
-soil_summary <- soil_joined |>
-  summarise(across(c(pH, organic_matter, total_nitrogen, cec, clay, sand),
-                   list(mean = ~mean(.x, na.rm = TRUE), 
-                        sd = ~sd(.x, na.rm = TRUE)),
-                   .names = "{.col}_{.fn}")) |>
-  pivot_longer(everything(), names_to = "variable", values_to = "value")
-
-knitr::kable(soil_summary, digits = 2,
-  caption = "Soil properties summary across 24 oblasts")
-```
-
-------------------------------------------------------------------------
-
-## 3.6 Weather aggregation by phenological phases
-
-Winter wheat in Ukraine follows a well-documented phenological calendar:
-
-| Phase          | Calendar window | Biological meaning                 |
-|----------------|-----------------|------------------------------------|
-| Pre-sowing     | 10 Sep – 30 Sep | Soil moisture build-up             |
-| **Early half** | 1 Oct – 15 May  | Vernalisation, dormancy, tillering |
-| **Late half**  | 16 May – 31 Jul | Heading, anthesis, grain filling   |
-| Full season    | 10 Sep – 31 Jul | Complete cycle                     |
-
-```{r season-aggregates}
-library(lubridate)
-
-BASE_TEMP <- 5  # will be refined based on Section 3.1 results
-
-weather <- read_csv("daily_weather.csv", show_col_types = FALSE) |>
-  mutate(date = as_date(date), year = year(date)) |>
-  filter(year >= 2015, year <= 2024)
+# ── Weather aggregation helper (without ET0, radiation, dewpoint) ──
+# Based on correlation analysis, we keep only temperature metrics, precipitation, and wind
+BASE_TEMP <- 5
 
 agg_weather_slice <- function(df, suffix = "") {
-  result <- df |>
+  result <- df %>%
     mutate(
-      t_mean = (temperature_2m_max + temperature_2m_min) / 2,
-      t_dev = t_mean - BASE_TEMP,
-      days_hot_crit = as.integer(t_dev > 20),
+      t_mean         = (temperature_2m_max + temperature_2m_min) / 2,
+      t_dev          = t_mean - BASE_TEMP,
+      days_hot_crit  = as.integer(t_dev > 20),
       days_cold_crit = as.integer(t_dev < -15),
-      heat_noncrit = if_else(t_dev > 0 & t_dev <= 20, t_dev, 0),
-      cold_noncrit = if_else(t_dev >= -15 & t_dev < 0, t_dev, 0)
-    ) |>
-    group_by(region, year) |>
+      heat_pos       = if_else(t_dev > 0, t_dev, 0),
+      cold_neg       = if_else(t_dev < 0, t_dev, 0)
+    ) %>%
+    group_by(region, year) %>%
     summarise(
-      days_hot_crit = sum(days_hot_crit, na.rm = TRUE),
-      days_cold_crit = sum(days_cold_crit, na.rm = TRUE),
-      sum_heat_noncrit = sum(heat_noncrit, na.rm = TRUE),
-      sum_cold_noncrit = sum(cold_noncrit, na.rm = TRUE),
-      total_precip = sum(precipitation_sum, na.rm = TRUE),
-      total_et0 = sum(et0_fao_evapotranspiration, na.rm = TRUE),
-      mean_wind = mean(wind_gusts_10m_max, na.rm = TRUE),
-      water_deficit = total_precip - total_et0,
+      days_hot_crit  = sum(days_hot_crit,         na.rm = TRUE),
+      days_cold_crit = sum(days_cold_crit,        na.rm = TRUE),
+      sum_heat_pos   = sum(heat_pos,              na.rm = TRUE),
+      sum_cold_neg   = sum(cold_neg,              na.rm = TRUE),
+      total_precip   = sum(precipitation_sum,     na.rm = TRUE),
+      mean_wind      = mean(wind_gusts_10m_max,   na.rm = TRUE),
       .groups = "drop"
     )
   
   if (suffix != "") {
-    result <- result |> rename_with(~ paste0(.x, suffix), -c(region, year))
+    result <- result %>%
+      rename_with(~ paste0(.x, suffix), -c(region, year))
   }
+  
   return(result)
 }
 
-# Assign days to harvest year
-weather_tagged <- weather |>
+# ── Load weather ──────────────────────────────────────────────
+weather_raw <- read_csv("daily_weather.csv", show_col_types = FALSE) %>%
+  mutate(date = as_date(date), year = year(date)) %>%
+  filter(year >= 2015, year <= 2024)
+
+weather_tagged <- weather_raw %>%
   mutate(
-    cal_month = month(date),
-    cal_day = day(date),
-    cal_year = year(date),
-    harvest_yr = if_else(cal_month >= 9, cal_year + 1, cal_year)
-  ) |>
-  select(-year)
+    cal_month  = month(date),
+    cal_day    = day(date),
+    harvest_yr = if_else(cal_month >= 9, year + 1L, year)
+  )
 
-# Seasonal aggregates
-weather_gs <- weather_tagged |>
-  filter((cal_month == 9 & cal_day >= 10) | cal_month %in% c(10, 11, 12, 1, 2, 3, 4, 5, 6, 7)) |>
-  rename(year = harvest_yr) |> agg_weather_slice(suffix = "_gs")
+# ── Seasonal slices ──
+weather_full <- weather_raw %>%
+  agg_weather_slice(suffix = "")
 
-weather_early <- weather_tagged |>
-  filter((cal_month %in% c(10, 11, 12, 1, 2, 3, 4)) | (cal_month == 5 & cal_day <= 15)) |>
-  rename(year = harvest_yr) |> agg_weather_slice(suffix = "_early")
+weather_aug <- weather_raw %>%
+  filter(month(date) == 8) %>%
+  agg_weather_slice(suffix = "_aug")
 
-weather_late <- weather_tagged |>
-  filter((cal_month == 5 & cal_day >= 16) | cal_month %in% c(6, 7)) |>
-  rename(year = harvest_yr) |> agg_weather_slice(suffix = "_late")
+weather_gs <- weather_tagged %>%
+  filter((cal_month == 9 & cal_day >= 10) |
+         cal_month %in% c(10, 11, 12, 1, 2, 3, 4, 5, 6, 7)) %>%
+  dplyr::select(-c(year, cal_month, cal_day)) %>%
+  rename(year = harvest_yr) %>%
+  agg_weather_slice(suffix = "_gs")
 
-weather_full <- weather |> agg_weather_slice(suffix = "")
-```
+weather_early <- weather_tagged %>%
+  filter(cal_month %in% c(10, 11, 12, 1, 2, 3, 4) |
+         (cal_month == 5 & cal_day <= 15)) %>%
+  dplyr::select(-c(year, cal_month, cal_day)) %>%
+  rename(year = harvest_yr) %>%
+  agg_weather_slice(suffix = "_early")
 
-------------------------------------------------------------------------
+weather_late <- weather_tagged %>%
+  filter((cal_month == 5 & cal_day >= 16) | cal_month %in% c(6, 7)) %>%
+  dplyr::select(-c(year, cal_month, cal_day)) %>%
+  rename(year = harvest_yr) %>%
+  agg_weather_slice(suffix = "_late")
 
-## 3.7 Final panel assembly
+weather_w1 <- weather_tagged %>%
+  filter(cal_month %in% c(10, 11, 12, 1)) %>%
+  dplyr::select(-c(year, cal_month, cal_day)) %>%
+  rename(year = harvest_yr) %>%
+  agg_weather_slice(suffix = "_w1")
 
-```{r model-panel-assembly}
-library(fixest)
-library(modelsummary)
+weather_w2 <- weather_tagged %>%
+  filter(cal_month %in% c(2, 3, 4)) %>%
+  dplyr::select(-c(year, cal_month, cal_day)) %>%
+  rename(year = harvest_yr) %>%
+  agg_weather_slice(suffix = "_w2")
 
-# Load crop data
-yield <- read_panel("harvest_capacity.csv", "yield_cpha")
-harv  <- read_panel("harvested_area.csv", "harv_kha") |>
-         mutate(harv_ha = harv_kha * 1000) |> select(-harv_kha)
-sown  <- read_panel("sowing_area.csv", "sown_kha") |>
-         mutate(sown_ha = sown_kha * 1000) |> select(-sown_kha)
+weather_w3 <- weather_tagged %>%
+  filter((cal_month == 5 & cal_day >= 16) | cal_month %in% c(6, 7)) %>%
+  dplyr::select(-c(year, cal_month, cal_day)) %>%
+  rename(year = harvest_yr) %>%
+  agg_weather_slice(suffix = "_w3")
 
-# War dummy
+# ── Load soil moisture ─────────────────────────────────────────
+soil_moisture <- read_csv("soil_moisture.csv", show_col_types = FALSE) %>%
+  mutate(date = as_date(date), year = year(date)) %>%
+  filter(year >= 2015, year <= 2024)
+
+soil_moisture_agg <- soil_moisture %>%
+  mutate(
+    drought_day = soil_moisture_0_7cm_pct < 20,
+    waterlog_day = soil_moisture_0_7cm_pct > 85
+  ) %>%
+  group_by(region, year) %>%
+  summarise(
+    mean_soil_moisture_pct = mean(soil_moisture_0_7cm_pct, na.rm = TRUE),
+    days_drought = sum(drought_day, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# ── Load crop data ────────────────────────────────────────────
+META_COLS <- c("indicator", "region", "unit", "scale", "decimals", "special", "note_ts", "note_obs")
+years <- as.character(2015:2025)
+
+read_panel <- function(file, value_name) {
+  read_csv(file, col_names = c(META_COLS, years), skip = 1, show_col_types = FALSE) %>%
+    dplyr::select(region, all_of(years)) %>%
+    pivot_longer(cols = all_of(years), names_to = "year", values_to = value_name) %>%
+    mutate(year = as.integer(year), !!value_name := suppressWarnings(as.numeric(.data[[value_name]]))) %>%
+    filter(region != "Україна")
+}
+
+yield <- read_panel("crop_capacity.csv", "yield_cpha")
+sown <- read_panel("sowing_area.csv", "sown_kha") %>% mutate(sown_ha = sown_kha * 1000) %>% dplyr::select(-sown_kha)
+harv <- read_panel("harvested_area.csv", "harv_kha") %>% mutate(harv_ha = harv_kha * 1000) %>% dplyr::select(-harv_kha)
+
 occupied_oblasts <- c("Донецька", "Луганська", "Запорізька", "Херсонська")
 
-# Assemble panel
-panel_model <- yield |>
-  left_join(harv |> select(region, year, harv_ha), by = c("region", "year")) |>
-  left_join(sown |> select(region, year, sown_ha), by = c("region", "year")) |>
-  mutate(harv_ratio = pmin(harv_ha / sown_ha, 1.05)) |>
-  left_join(region_lookup, by = c("region" = "region_cyr")) |>
-  left_join(weather_full, by = c("region_lat" = "region", "year")) |>
-  left_join(weather_gs, by = c("region_lat" = "region", "year")) |>
-  left_join(weather_early, by = c("region_lat" = "region", "year")) |>
-  left_join(weather_late, by = c("region_lat" = "region", "year")) |>
-  left_join(soil_joined, by = "region") |>
+# ── Build panel_base ──────────────────────────────────────────
+panel_base <- yield %>%
+  left_join(sown %>% dplyr::select(region, year, sown_ha), by = c("region", "year")) %>%
+  left_join(harv %>% dplyr::select(region, year, harv_ha), by = c("region", "year")) %>%
+  left_join(region_lookup, by = c("region" = "region_cyr")) %>%
+  left_join(weather_full,  by = c("region_lat" = "region", "year")) %>%
+  left_join(weather_aug,   by = c("region_lat" = "region", "year")) %>%
+  left_join(weather_gs,    by = c("region_lat" = "region", "year")) %>%
+  left_join(weather_early, by = c("region_lat" = "region", "year")) %>%
+  left_join(weather_late,  by = c("region_lat" = "region", "year")) %>%
+  left_join(weather_w1,    by = c("region_lat" = "region", "year")) %>%
+  left_join(weather_w2,    by = c("region_lat" = "region", "year")) %>%
+  left_join(weather_w3,    by = c("region_lat" = "region", "year")) %>%
+  left_join(soil_moisture_agg, by = c("region_lat" = "region", "year")) %>%
+  left_join(soil,          by = "region") %>%
   mutate(
-    war_east = as.integer(region %in% occupied_oblasts & year >= 2022),
+    war_east  = as.integer(region %in% occupied_oblasts & year == 2022),
     log_yield = log(yield_cpha),
-    log_sown = log(sown_ha + 1),
-    region_id = as.factor(region),
-    year_id = as.factor(year)
-  ) |>
+    log_sown  = log(sown_ha + 1),
+    t         = year - min(year),
+    region_id = relevel(as.factor(region), ref = "Київська")
+  ) %>%
   filter(!is.na(yield_cpha), !is.na(days_hot_crit))
 
-cat("Panel rows:", nrow(panel_model), "\n")
-cat("Regions:  ", n_distinct(panel_model$region_id), "\n")
-cat("Years:    ", n_distinct(panel_model$year_id), "\n")
-cat("War obs:  ", sum(panel_model$war_east), "\n")
-```
-
-------------------------------------------------------------------------
-
-## 3.8 Model specifications
-
-We estimate five nested models:
-
-| Model | Dependent var | Weather period | Sown area | Tests |
-|----|----|----|----|----|
-| **M1** | yield | Full year | ✓ | Baseline |
-| **M1-log** | log(yield) | Full year | ✓ | Functional form |
-| **M2a** | yield | Full year | ✗ | H₁ (sown redundant?) |
-| **M2b** | yield | Growing season | ✗ | **H₂** (winter matters) |
-| **M3** | yield | Split: early + late | ✗ | **H₃** (timing matters) |
-
-### 3.8.1 Model 1 — Full-year weather + sown area
-
-```{r model1}
-m1 <- feols(
-  yield_cpha ~ days_hot_crit + days_cold_crit +
-    sum_heat_noncrit + sum_cold_noncrit +
-    total_precip + total_et0 + mean_wind + water_deficit +
-    log_sown + war_east | region_id + year_id,
-  data = panel_model, cluster = ~region_id
-)
-
-# Joint test of H₁: all weather variables jointly significant?
-wald(m1,
-     keep = c("days_hot_crit", "days_cold_crit", "sum_heat_noncrit",
-              "sum_cold_noncrit", "total_precip", "total_et0",
-              "mean_wind", "water_deficit"),
-     vcov = "cluster")
-```
-
-### 3.8.2 Model 1-log — Log-transformed yield
-
-```{r model1-log}
-m1_log <- feols(
-  log_yield ~ days_hot_crit + days_cold_crit +
-    sum_heat_noncrit + sum_cold_noncrit +
-    total_precip + total_et0 + mean_wind + water_deficit +
-    log_sown + war_east | region_id + year_id,
-  data = panel_model, cluster = ~region_id
-)
-```
-
-### 3.8.3 Model 2a — Without sown area
-
-```{r model2a}
-m2a <- feols(
-  yield_cpha ~ days_hot_crit + days_cold_crit +
-    sum_heat_noncrit + sum_cold_noncrit +
-    total_precip + total_et0 + mean_wind + water_deficit +
-    war_east | region_id + year_id,
-  data = panel_model, cluster = ~region_id
-)
-```
-
-### 3.8.4 Model 2b — Growing-season weather (tests H₂)
-
-```{r model2b}
-m2b <- feols(
-  yield_cpha ~ days_hot_crit_gs + days_cold_crit_gs +
-    sum_heat_noncrit_gs + sum_cold_noncrit_gs +
-    total_precip_gs + total_et0_gs + mean_wind_gs + water_deficit_gs +
-    war_east | region_id + year_id,
-  data = panel_model, cluster = ~region_id
-)
-```
-
-### 3.8.5 Model 3 — Split season (tests H₃)
-
-```{r model3}
-m3 <- feols(
-  yield_cpha ~
-    # Early half (Oct–May)
-    days_hot_crit_early + days_cold_crit_early +
-    sum_heat_noncrit_early + sum_cold_noncrit_early +
-    total_precip_early + total_et0_early +
-    mean_wind_early + water_deficit_early +
-    # Late half (May–Jul)
-    days_hot_crit_late + days_cold_crit_late +
-    sum_heat_noncrit_late + sum_cold_noncrit_late +
-    total_precip_late + total_et0_late +
-    mean_wind_late + water_deficit_late +
-    war_east | region_id + year_id,
-  data = panel_model, cluster = ~region_id
-)
-
-# Wald test for H₃: β_early = β_late
-wald(m3,
-     c("days_hot_crit_early = days_hot_crit_late",
-       "days_cold_crit_early = days_cold_crit_late",
-       "sum_heat_noncrit_early = sum_heat_noncrit_late",
-       "sum_cold_noncrit_early = sum_cold_noncrit_late",
-       "total_precip_early = total_precip_late",
-       "total_et0_early = total_et0_late",
-       "mean_wind_early = mean_wind_late",
-       "water_deficit_early = water_deficit_late"),
-     vcov = "cluster")
-```
-
-------------------------------------------------------------------------
-
-## 3.9 Model comparison
-
-### 3.9.1 Fit statistics
-
-```{r model-comparison}
-fit_table <- tibble(
-  Model = c("M1 (full-year + sown)", "M1-log (log yield)",
-            "M2a (full-year, no sown)", "M2b (growing season)",
-            "M3 (split season)"),
-  N = c(nobs(m1), nobs(m1_log), nobs(m2a), nobs(m2b), nobs(m3)),
-  AIC = c(AIC(m1), AIC(m1_log), AIC(m2a), AIC(m2b), AIC(m3)),
-  BIC = c(BIC(m1), BIC(m1_log), BIC(m2a), BIC(m2b), BIC(m3)),
-  `R² (within)` = c(r2(m1)[["wr2"]], r2(m1_log)[["wr2"]],
-                    r2(m2a)[["wr2"]], r2(m2b)[["wr2"]], r2(m3)[["wr2"]]),
-  `R² (overall)` = c(r2(m1)[["r2"]], r2(m1_log)[["r2"]],
-                     r2(m2a)[["r2"]], r2(m2b)[["r2"]], r2(m3)[["r2"]])
-)
-
-knitr::kable(fit_table, digits = 3,
-  caption = "Model fit comparison")
-```
-
-### 3.9.2 Hypothesis testing summary
-
-| Hypothesis | Test | Comparison | Evidence |
-|----|----|----|----|
-| **H₁a** (hot days ↓) | t-test | β_hot \< 0 | See coefficient table |
-| **H₁b** (cold days ↓) | t-test | β_cold \< 0 | See coefficient table |
-| **H₁c** (heat sum ↑) | t-test | β_heat \> 0 | See coefficient table |
-| **H₁d** (cold sum ↑) | t-test | β_cold_sum \> 0 | See coefficient table |
-| **H₂** (winter matters) | AIC/BIC | M2b vs M2a | Lower AIC/BIC for M2b → support |
-| **H₃** (timing matters) | Wald test | β_early = β_late | Reject equality → support |
-| **H₄** (collinearity) | VIF | radiation + dewpoint | VIF \> 10 → omit |
-
-------------------------------------------------------------------------
-
-## 3.10 Full results table
-
-```{r model-table, message=FALSE}
-coef_map <- c(
-  # Full-year
-  days_hot_crit = "Hot critical days",
-  days_cold_crit = "Cold critical days",
-  sum_heat_noncrit = "Accum. heat",
-  sum_cold_noncrit = "Accum. cold",
-  total_precip = "Precipitation",
-  total_et0 = "ET₀",
-  mean_wind = "Wind gusts",
-  water_deficit = "Water deficit",
-  log_sown = "log(Sown area)",
-  # Growing season
-  days_hot_crit_gs = "Hot days (GS)",
-  days_cold_crit_gs = "Cold days (GS)",
-  sum_heat_noncrit_gs = "Accum. heat (GS)",
-  sum_cold_noncrit_gs = "Accum. cold (GS)",
-  total_precip_gs = "Precip (GS)",
-  total_et0_gs = "ET₀ (GS)",
-  mean_wind_gs = "Wind (GS)",
-  water_deficit_gs = "Water deficit (GS)",
-  # Early half
-  days_hot_crit_early = "Hot days (Oct–May)",
-  days_cold_crit_early = "Cold days (Oct–May)",
-  sum_heat_noncrit_early = "Accum. heat (Oct–May)",
-  sum_cold_noncrit_early = "Accum. cold (Oct–May)",
-  total_precip_early = "Precip (Oct–May)",
-  total_et0_early = "ET₀ (Oct–May)",
-  mean_wind_early = "Wind (Oct–May)",
-  water_deficit_early = "Water deficit (Oct–May)",
-  # Late half
-  days_hot_crit_late = "Hot days (May–Jul)",
-  days_cold_crit_late = "Cold days (May–Jul)",
-  sum_heat_noncrit_late = "Accum. heat (May–Jul)",
-  sum_cold_noncrit_late = "Accum. cold (May–Jul)",
-  total_precip_late = "Precip (May–Jul)",
-  total_et0_late = "ET₀ (May–Jul)",
-  mean_wind_late = "Wind (May–Jul)",
-  water_deficit_late = "Water deficit (May–Jul)",
-  # Common
-  war_east = "War × East (2022+)"
-)
-
-modelsummary(
-  list("M1\nfull-yr+sown" = m1, "M1-log\n(log Y)" = m1_log,
-       "M2a\nfull-yr" = m2a, "M2b\ngrow.season" = m2b,
-       "M3\nsplit" = m3),
-  coef_map = coef_map,
-  stars = c("*" = 0.10, "**" = 0.05, "***" = 0.01),
-  gof_map = c("nobs", "r.squared", "adj.r.squared", "AIC", "BIC"),
-  title = "Panel fixed-effects models — winter wheat yield, Ukraine 2015–2024",
-  notes = paste(
-    "Two-way FE: region + year. Standard errors clustered at oblast level.",
-    "GS = growing season (10 Sep – 31 Jul). Early half: 1 Oct – 15 May. Late half: 16 May – 31 Jul.",
-    "*** p<0.01, ** p<0.05, * p<0.10."
+# ── Calculate loss_lag ────────────────────────────────────────
+loss_rate_raw <- panel_base %>%
+  mutate(
+    loss_rate = pmax((sown_ha - harv_ha) / sown_ha, 0),
+    loss_rate = pmin(loss_rate, 0.5)
   )
-)
+
+loss_lag <- loss_rate_raw %>%
+  dplyr::select(region, year, loss_rate) %>%
+  mutate(year = year + 1, loss_lag = loss_rate) %>%
+  dplyr::select(-loss_rate)
+
+panel_base <- panel_base %>%
+  left_join(loss_lag, by = c("region", "year"))
+
+# ── Fix region names and create dummies ───────────────────────
+panel_base$region <- gsub("-", "_", panel_base$region)
+panel_base$region_id <- relevel(as.factor(panel_base$region), ref = "Київська")
+
+region_dummies_raw <- model.matrix(~ region_id, data = panel_base) %>%
+  as.data.frame() %>%
+  dplyr::select(-`(Intercept)`)
+
+names(region_dummies_raw) <- make.names(names(region_dummies_raw))
+panel_base <- bind_cols(panel_base, region_dummies_raw)
+dummy_cols <- names(region_dummies_raw)
+
+# ── Verification ──────────────────────────────────────────────
+cat("Panel rows:", nrow(panel_base), "\n")
+cat("Regions:  ", n_distinct(panel_base$region), "\n")
+cat("Years:    ", n_distinct(panel_base$year), "\n")
+cat("War obs:  ", sum(panel_base$war_east, na.rm = TRUE), "\n")
+cat("Dummy columns created:", length(dummy_cols), "\n")
 ```
 
 ------------------------------------------------------------------------
 
-## 3.11 Conclusions
+# Part 1 — Stationarity and trend
 
-Based on the analysis above, we draw the following conclusions:
+## 3.1.1 ADF tests on yield per oblast
 
-### 3.11.1 What influences yield the most?
+```{r adf-yield}
+adf_results <- panel_base |>
+  group_by(region) |>
+  arrange(year) |>
+  summarise(
+    adf_stat  = tryCatch(adf.test(yield_cpha, k = 1)$statistic, error = function(e) NA_real_),
+    adf_pval  = tryCatch(adf.test(yield_cpha, k = 1)$p.value, error = function(e) NA_real_),
+    .groups = "drop"
+  ) |>
+  mutate(
+    stationary = case_when(
+      adf_pval < 0.01 ~ "Yes ***",
+      adf_pval < 0.05 ~ "Yes **",
+      adf_pval < 0.10 ~ "Yes *",
+      TRUE            ~ "No"
+    )
+  ) |>
+  arrange(adf_pval)
 
-From the standardised coefficients (Section 3.4), the ranking of factors by absolute impact:
+knitr::kable(adf_results, digits = 3, caption = "ADF test results for yield per oblast (k=1 lag)")
+```
 
-| Rank | Factor | Direction | Interpretation |
-|----|----|----|----|
-| 1 | **Water deficit** | Negative | Water shortage (precip − ET₀) — the most important factor |
-| 2 | **Hot critical days** | Negative | Each additional day of extreme heat significantly reduces yield |
-| 3 | **Accumulated heat** | Positive | Heat within normal range promotes growth |
-| 4 | **Precipitation** | Positive | More rainfall → higher yield |
-| 5 | **Cold critical days** | Negative | Winter kill: matters but less than heat stress |
-| 6 | **Sown area** | Positive | Scale effect (but absorbed by FE) |
+## 3.1.2 Baseline model (no trend)
 
-### 3.11.2 Soil effects
+```{r baseline-model}
+weather_vars_full <- c("days_hot_crit", "days_cold_crit", "sum_heat_pos", "sum_cold_neg", 
+                       "total_precip", "mean_wind", "mean_soil_moisture_pct", "days_drought")
 
--   Organic matter (`organic_matter`) and clay (`clay`) **buffer** the impact of drought and heat
--   pH and CEC showed no significant effect in the random effects model
--   `soil × weather` interactions are significant, confirming: soils with high organic matter better buffer extreme weather
+fml_base <- as.formula(paste(
+  "yield_cpha ~",
+  paste(c(weather_vars_full, "log_sown", "war_east", dummy_cols), collapse = " + ")
+))
 
-### 3.11.3 Optimal base temperature
+m_base <- lm(fml_base, data = panel_base)
+summary(m_base)
+```
 
--   For early half (Oct–May), optimal `BASE_TEMP` = **X°C** (replace with actual result)
--   For late half (May–Jul), optimal `BASE_TEMP` = **Y°C** (replace with actual result)
--   Using different base temperatures improves AIC by **Δ** points (replace with actual result)
+## 3.1.3 Common time trend
 
-### 3.11.4 Hypothesis verdicts
+```{r common-trend}
+fml_trend <- as.formula(paste(
+  "yield_cpha ~",
+  paste(c(weather_vars_full, "log_sown", "war_east", "t", dummy_cols), collapse = " + ")
+))
 
-| Hypothesis          | Verdict       | Evidence                             |
-|---------------------|---------------|--------------------------------------|
-| H₁a (hot days ↓)    | **Confirmed** | Coefficient negative, p \< 0.01      |
-| H₁b (cold days ↓)   | **Confirmed** | Coefficient negative, p \< 0.05      |
-| H₁c (heat sum ↑)    | **Confirmed** | Coefficient positive, p \< 0.01      |
-| H₁d (cold sum ↑)    | **Partial**   | Significant only for early half      |
-| H₂ (winter matters) | **Confirmed** | M2b outperforms M2a by AIC/BIC       |
-| H₃ (timing matters) | **Confirmed** | Wald test rejects β_early = β_late   |
-| H₄ (collinearity)   | **Confirmed** | VIF \> 10 for radiation and dewpoint |
+m_trend <- lm(fml_trend, data = panel_base)
+summary(m_trend)
+```
 
-### 3.11.5 Recommendations for agribusiness
+## 3.1.4 Region-specific trends
 
-1.  **Monitor**: `water_deficit` (precip − ET₀) — the most critical factor
-2.  **Count**: `days_hot_crit` — not just average temperature, but specifically days \>25°C
-3.  **Consider**: winter temperature (`days_cold_crit`) for winter kill risk assessment
-4.  **Segment**: different thresholds for early and late vegetative periods
-5.  **Invest**: in soils with high organic matter — they buffer extreme weather \`\`\`
+```{r region-trends}
+region_t_cols <- paste0(dummy_cols, "_t")
+for (col in dummy_cols) {
+  panel_base[[paste0(col, "_t")]] <- panel_base[[col]] * panel_base$t
+}
 
-This is the complete rewritten Section 3 in English with all your requested changes: 1. Clear hypotheses without quadratic terms 2. Optimal base temperature tests 3. Soil variable significance tests 4. Variable importance ranking conclusions
+fml_region_trend <- as.formula(paste(
+  "yield_cpha ~",
+  paste(c(weather_vars_full, "log_sown", "war_east", "t", dummy_cols, region_t_cols), collapse = " + ")
+))
+
+m_region_trend <- lm(fml_region_trend, data = panel_base)
+summary(m_region_trend)
+```
+
+## 3.1.5 Adding lagged loss rate
+
+```{r lagged-loss}
+panel_lag <- panel_base |> filter(!is.na(loss_lag))
+
+fml_lag <- as.formula(paste(
+  "yield_cpha ~",
+  paste(c(weather_vars_full, "log_sown", "war_east", "loss_lag", dummy_cols), collapse = " + ")
+))
+
+m_lag <- lm(fml_lag, data = panel_lag)
+summary(m_lag)
+```
+
+## 3.1.6 ADF on residuals
+
+```{r adf-residuals}
+panel_base$resid_base <- residuals(m_base)
+panel_base$resid_trend <- residuals(m_trend)
+
+adf_resid <- panel_base |>
+  group_by(region) |>
+  arrange(year) |>
+  summarise(
+    adf_base_p  = tryCatch(adf.test(resid_base, k = 1)$p.value, error = function(e) NA_real_),
+    adf_trend_p = tryCatch(adf.test(resid_trend, k = 1)$p.value, error = function(e) NA_real_),
+    .groups = "drop"
+  )
+
+knitr::kable(adf_resid, digits = 3, caption = "ADF on model residuals per oblast")
+```
+
+## 3.1.7 Part 1 comparison table
+
+```{r part1-comparison}
+part1_table <- tibble(
+  Model = c("Baseline (no trend)", "+ Common trend (t)", "+ Region trends (t × region)", "+ Lagged loss rate"),
+  N = c(nobs(m_base), nobs(m_trend), nobs(m_region_trend), nobs(m_lag)),
+  Adj_R2 = c(summary(m_base)$adj.r.squared, summary(m_trend)$adj.r.squared,
+             summary(m_region_trend)$adj.r.squared, summary(m_lag)$adj.r.squared),
+  AIC = c(AIC(m_base), AIC(m_trend), AIC(m_region_trend), AIC(m_lag)),
+  BIC = c(BIC(m_base), BIC(m_trend), BIC(m_region_trend), BIC(m_lag))
+)
+
+knitr::kable(part1_table, digits = 3, caption = "Part 1 model comparison")
+```
 
 ------------------------------------------------------------------------
 
-# Methods.
+# Part 2 — Weather window and aggregation
 
-Explain accurately what methods you are using to solve the tasks of interest.
+## 3.2.0 Choosing best Part 1 specification
 
-To solve these tasks, we apply the following: 1. **Pooled OLS & Polynomial Regression:** To capture the parabolic effects of temperature and radiation. 2. **Segmented (Piecewise) Regression:** Specifically for our "Extra Days" hypothesis to model heat stress above $30^{\circ}C$. 3. **Fixed Effects (FE) Model:** To control for time-invariant regional factors like soil quality across Ukraine. 4. **Moderation Analysis:** Using interaction terms ($Yield \times Factor$) to see how natural factors alter the sensitivity of price to yield]. 5. **Correlation Matrix:** To test the $H_1$ of Hypothesis 4 and decide whether to omit cloudiness in favor of rain/shine to maintain model parsimony.
+```{r best-part1}
+adj_r2_part1 <- c(summary(m_base)$adj.r.squared, summary(m_trend)$adj.r.squared, summary(m_region_trend)$adj.r.squared)
+best_part1 <- c("none", "common", "region")[which.max(adj_r2_part1)]
+cat("Best trend specification:", best_part1, "\n")
+
+trend_controls <- switch(best_part1,
+  none   = character(0),
+  common = "t",
+  region = c("t", region_t_cols)
+)
+
+base_controls <- c("log_sown", "war_east", dummy_cols)
+all_controls  <- c(base_controls, trend_controls)
+```
+
+## 3.2.1 Full-year model (M_full)
+
+```{r m-full}
+fml_full <- as.formula(paste("yield_cpha ~", paste(c(weather_vars_full, all_controls), collapse = " + ")))
+m_full <- lm(fml_full, data = panel_base)
+summary(m_full)
+```
+
+## 3.2.2 Growing season model (M_gs)
+
+```{r m-gs}
+weather_vars_gs <- c("days_hot_crit_gs", "days_cold_crit_gs", "sum_heat_pos_gs", "sum_cold_neg_gs",
+                     "total_precip_gs", "mean_wind_gs", "mean_soil_moisture_pct", "days_drought")
+
+fml_gs <- as.formula(paste("yield_cpha ~", paste(c(weather_vars_gs, all_controls), collapse = " + ")))
+m_gs <- lm(fml_gs, data = panel_base)
+summary(m_gs)
+```
+
+## 3.2.3 Two-split model (M_split2)
+
+```{r m-split2}
+weather_vars_split2 <- c(
+  "days_hot_crit_early", "days_cold_crit_early", "sum_heat_pos_early", "sum_cold_neg_early",
+  "total_precip_early", "mean_wind_early",
+  "days_hot_crit_late", "days_cold_crit_late", "sum_heat_pos_late", "sum_cold_neg_late",
+  "total_precip_late", "mean_wind_late"
+)
+
+fml_split2 <- as.formula(paste("yield_cpha ~", paste(c(weather_vars_split2, all_controls), collapse = " + ")))
+m_split2 <- lm(fml_split2, data = panel_base)
+summary(m_split2)
+```
+
+## 3.2.4 Three-split model (M_split3)
+
+```{r m-split3}
+weather_vars_split3 <- c(
+  "days_hot_crit_w1", "days_cold_crit_w1", "sum_heat_pos_w1", "sum_cold_neg_w1", "total_precip_w1", "mean_wind_w1",
+  "days_hot_crit_w2", "days_cold_crit_w2", "sum_heat_pos_w2", "sum_cold_neg_w2", "total_precip_w2", "mean_wind_w2",
+  "days_hot_crit_w3", "days_cold_crit_w3", "sum_heat_pos_w3", "sum_cold_neg_w3", "total_precip_w3", "mean_wind_w3"
+)
+
+fml_split3 <- as.formula(paste("yield_cpha ~", paste(c(weather_vars_split3, all_controls), collapse = " + ")))
+m_split3 <- lm(fml_split3, data = panel_base)
+summary(m_split3)
+```
+
+## 3.2.5 Part 2 comparison table
+
+```{r part2-comparison}
+part2_table <- tibble(
+  Model = c("M_full (full year)", "M_gs (growing season)", "M_split2 (early + late)", "M_split3 (3 windows)"),
+  N = c(nobs(m_full), nobs(m_gs), nobs(m_split2), nobs(m_split3)),
+  Adj_R2 = c(summary(m_full)$adj.r.squared, summary(m_gs)$adj.r.squared,
+             summary(m_split2)$adj.r.squared, summary(m_split3)$adj.r.squared),
+  AIC = c(AIC(m_full), AIC(m_gs), AIC(m_split2), AIC(m_split3)),
+  BIC = c(BIC(m_full), BIC(m_gs), BIC(m_split2), BIC(m_split3))
+)
+
+knitr::kable(part2_table, digits = 3, caption = "Part 2 model comparison")
+```
 
 ------------------------------------------------------------------------
 
-# Results.
+# Part 3 — Soil variables
 
-Describe the results you already have obtained at this stage.
+## 3.3.0 Theoretical background
 
-At this stage (April 2, 2026), we have: - Completed the collection of meteorological data via Open-Meteo API and price data from Minfin. - Constructed a unified panel dataset aligned by weekly averages. - Initiated the classification of "Hot" and "Cold" days to test our Extreme Day hypothesis.
+### Why region dummies eliminate time-invariant variables
+
+In a model with explicit region dummy variables, each dummy captures the full average level of yield for that oblast, absorbing all time-invariant characteristics — including soil properties. Formally, for any time-invariant variable $z_i$ (such as soil organic matter), its value is identical across all $T$ observations belonging to region $i$. This means $z_i$ is a linear combination of the region dummies:
+
+$$z_i = \sum_{j} z_j \cdot \mathbf{1}[\text{region} = j]$$
+
+Including $z_i$ alongside the region dummies therefore creates **perfect multicollinearity** — the design matrix is rank-deficient and the soil coefficient $\gamma$ cannot be separately identified from the region intercepts. R will silently drop the collinear columns.
+
+This is not a failure of the model — it is a feature. The region dummies are doing exactly what we want: controlling for all stable regional differences including soil, climate, infrastructure, and management culture. The cost is that we cannot estimate the direct effect of soil on yield.
+
+### Random effects model
+
+The random effects (RE) model offers a way to recover soil coefficients by treating region-level unobservables as random draws from a distribution rather than fixed parameters to be estimated:
+
+$$y_{it} = \mathbf{x}_{it}'\boldsymbol{\beta} + \mathbf{z}_i'\boldsymbol{\gamma} + u_i + \varepsilon_{it}$$
+
+where $u_i \sim \mathcal{N}(0, \sigma_u^2)$ is the region-level random effect and $\varepsilon_{it} \sim \mathcal{N}(0, \sigma_\varepsilon^2)$ is the idiosyncratic error. The key assumption is **orthogonality**: $\text{Cov}(u_i, \mathbf{x}_{it}) = 0$ and $\text{Cov}(u_i, \mathbf{z}_i) = 0$. Under this assumption, $\boldsymbol{\gamma}$ — the soil coefficients — is consistently estimated.
+
+However, this assumption is likely violated in our setting. Soil quality is geographically correlated with climate: southern oblasts tend to have both chernozem soils (high organic matter) and hotter, drier weather. This means $\text{Cov}(u_i, \mathbf{x}_{it}) \neq 0$, and RE estimates of soil effects will absorb some of the omitted weather-climate variation, biasing $\boldsymbol{\gamma}$.
+
+### The Mundlak-Chamberlain device
+
+The Mundlak (1978) and Chamberlain (1982) approach offers a middle ground between region dummies and pure RE. It augments the RE model by including the within-region means $\bar{\mathbf{x}}_i$ of all time-varying regressors as additional controls:
+
+$$y_{it} = \mathbf{x}_{it}'\boldsymbol{\beta} + \mathbf{z}_i'\boldsymbol{\gamma} + \bar{\mathbf{x}}_i'\boldsymbol{\lambda} + a_i + \varepsilon_{it}$$
+
+where $a_i$ is now assumed orthogonal to both $\mathbf{x}_{it} - \bar{\mathbf{x}}_i$ and $\mathbf{z}_i$. Three key results follow:
+
+1.  The $\boldsymbol{\beta}$ estimates are numerically identical to the within (FE/dummy) estimator — time-varying weather effects are consistently estimated regardless of whether RE assumptions hold
+2.  The $\boldsymbol{\gamma}$ estimates recover soil coefficients **conditional on the long-run average weather environment** of each oblast, captured by $\bar{\mathbf{x}}_i$. This controls for the climate-soil correlation that would otherwise bias RE
+3.  A joint Wald test on $\boldsymbol{\lambda} = \mathbf{0}$ is a Hausman-type specification test: if the Mundlak terms are jointly insignificant, RE orthogonality holds and plain RE is valid; if rejected, Mundlak is preferred
+
+In our context, $\bar{\mathbf{x}}_i$ captures the long-run average weather of each oblast — essentially its climate. Including these means allows soil coefficients to be interpreted as the effect of soil quality **conditional on local climate**, which is the variation we want to identify.
+
+### Soil $\times$ weather interactions under region dummies
+
+A third approach identifies soil effects through their **interaction** with time-varying weather variables. For example:
+
+$$y_{it} = \dots + \beta_1 \cdot \text{hot\_days}_{it} + \beta_2 \cdot \text{OM}_i + \beta_3 \cdot (\text{hot\_days}_{it} \times \text{OM}_i) + \text{region dummies} + \varepsilon_{it}$$
+
+The main effect $\beta_2$ of $\text{OM}_i$ is collinear with the region dummies and is dropped. However, the interaction term $\beta_3$ **is identified** because $\text{hot\_days}_{it} \times \text{OM}_i$ varies over time (hot days change each year) even though $\text{OM}_i$ is fixed. This coefficient answers a more policy-relevant question: **does having higher organic matter change how sensitive yield is to heat or drought stress?** If $\beta_3 > 0$ for `organic_matter × days_hot_crit`, then oblasts with richer soils suffer less yield loss per additional hot day — a direct argument for soil investment as climate adaptation.
 
 ------------------------------------------------------------------------
 
-# Conclusions.
+## 3.3.1 Random effects model
 
-What conclusions have you already drawn?
+We estimate a random effects model using `lme4::lmer` with soil variables as direct regressors alongside the best weather specification from Part 2. We use the growing season weather variables (`_gs`) as the weather block, since the Part 2 comparison will determine the best window — the growing season model is a reasonable default and avoids overfitting from the split models.
 
-Early findings indicate that weather impacts are indeed non-linear, supporting our use of quadratic forms in the model. We have also concluded that high-frequency daily data is necessary to accurately count "extreme" events before aggregating them into the final econometric model.
+Note that soil moisture variables (`mean_soil_moisture_pct`, `days_drought`) are time-varying and are included as normal weather regressors. Only the static soil properties from `soil_data.csv` (pH, organic matter, etc.) face the collinearity problem and require the RE/Mundlak approach.
+
+```{r}
+oblast_map <- c(
+  "Vinnytska"        = "Вінницька",
+  "Volynska"         = "Волинська",
+  "Dnipropetrovska"  = "Дніпропетровська",
+  "Donetska"         = "Донецька",
+  "Zhytomyrska"      = "Житомирська",
+  "Zakarpatska"      = "Закарпатська",
+  "Zaporizka"        = "Запорізька",
+  "Ivano_Frankivska" = "Івано_Франківська",
+  "Kyivska"          = "Київська",
+  "Kirovohradska"    = "Кіровоградська",
+  "Luhanska"         = "Луганська",
+  "Lvivska"          = "Львівська",
+  "Mykolaivska"      = "Миколаївська",
+  "Odeska"           = "Одеська",
+  "Poltavska"        = "Полтавська",
+  "Rivnenska"        = "Рівненська",
+  "Sumska"           = "Сумська",
+  "Ternopilska"      = "Тернопільська",
+  "Kharkivska"       = "Харківська",
+  "Khersonska"       = "Херсонська",
+  "Khmelnytska"      = "Хмельницька",
+  "Cherkaska"        = "Черкаська",
+  "Chernivetska"     = "Чернівецька",
+  "Chernihivska"     = "Чернігівська"
+)
+
+soil_raw <- read_csv("soil_data.csv", show_col_types = FALSE) |>
+  mutate(region = oblast_map[oblast]) |>
+  dplyr::select(-oblast)
+
+panel_base <- panel_base |>
+  left_join(soil_raw, by = "region")
+
+panel_base$region <- trimws(panel_base$region)
+soil_raw$region   <- trimws(soil_raw$region)
+
+panel_base$region <- enc2utf8(panel_base$region)
+soil_raw$region   <- enc2utf8(soil_raw$region)
+
+panel_base <- panel_base |>
+  left_join(soil_raw, by = "region")
+
+names(panel_base)
+```
+
+
+```{r re-model}
+soil_vars <- c("pH", "organic_matter", "total_nitrogen", "cec", "clay", "sand")
+
+re_weather <- c("days_hot_crit_gs", "days_cold_crit_gs",
+                "sum_heat_pos_gs", "sum_cold_neg_gs",
+                "total_precip_gs", "mean_wind_gs",
+                "mean_soil_moisture_pct", "days_drought")
+
+re_formula <- as.formula(paste(
+  "yield_cpha ~",
+  paste(c(re_weather, soil_vars, "log_sown", "war_east"), collapse = " + "),
+  "+ (1 | region) + (1 | year)"
+))
+
+m_re <- lme4::lmer(re_formula, data = panel_base, REML = FALSE)
+summary(m_re)
+
+soil_coefs_re <- coef(summary(m_re)) |>
+  as.data.frame() |>
+  rownames_to_column("variable") |>
+  filter(variable %in% soil_vars) |>
+  rename(std_error = `Std. Error`, t_value = `t value`) |>
+  mutate(
+    p_approx    = 2 * pnorm(abs(t_value), lower.tail = FALSE),
+    significant = case_when(
+      p_approx < 0.01 ~ "***",
+      p_approx < 0.05 ~ "**",
+      p_approx < 0.10 ~ "*",
+      TRUE            ~ "ns"
+    ),
+    Estimate  = round(Estimate,  3),
+    std_error = round(std_error, 3)
+  ) |>
+  dplyr::select(variable, Estimate, std_error, t_value, p_approx, significant)
+
+knitr::kable(soil_coefs_re, digits = 3,
+  caption = "RE model — soil variable coefficients (approximate p-values via normal distribution)")
+
+cat("\nJoint Wald test for all soil variables (RE model):\n")
+soil_joint_re <- multcomp::glht(m_re, linfct = paste0(soil_vars, " = 0"))
+summary(soil_joint_re)
+```
+
+------------------------------------------------------------------------
+
+## 3.3.2 Mundlak-Chamberlain device
+
+We compute within-region means of all time-varying weather regressors and add them to the RE model. The Wald test on these mean terms serves as a Hausman-type specification test.
+
+```{r mundlak}
+mundlak_vars <- re_weather
+
+mundlak_means <- panel_base |>
+  group_by(region) |>
+  summarise(
+    across(all_of(mundlak_vars),
+           ~ mean(.x, na.rm = TRUE),
+           .names = "{.col}_mean"),
+    .groups = "drop"
+  )
+
+panel_mundlak <- panel_base |>
+  left_join(mundlak_means, by = "region")
+
+mundlak_mean_cols <- paste0(mundlak_vars, "_mean")
+
+mundlak_formula <- as.formula(paste(
+  "yield_cpha ~",
+  paste(c(re_weather, soil_vars, mundlak_mean_cols,
+          "log_sown", "war_east"), collapse = " + "),
+  "+ (1 | region) + (1 | year)"
+))
+
+m_mundlak <- lmer(mundlak_formula, data = panel_mundlak, REML = FALSE)
+summary(m_mundlak)
+
+soil_coefs_mundlak <- coef(summary(m_mundlak)) |>
+  as.data.frame() |>
+  rownames_to_column("variable") |>
+  filter(variable %in% soil_vars) |>
+  rename(std_error = `Std. Error`, t_value = `t value`) |>
+  mutate(
+    p_approx    = 2 * pnorm(abs(t_value), lower.tail = FALSE),
+    significant = case_when(
+      p_approx < 0.01 ~ "***",
+      p_approx < 0.05 ~ "**",
+      p_approx < 0.10 ~ "*",
+      TRUE            ~ "ns"
+    ),
+    Estimate  = round(Estimate,  3),
+    std_error = round(std_error, 3)
+  ) |>
+  dplyr::select(variable, Estimate, std_error, t_value, p_approx, significant)
+
+knitr::kable(soil_coefs_mundlak, digits = 3,
+  caption = "Mundlak-Chamberlain model — soil variable coefficients")
+
+cat("\nHausman-type test: joint significance of Mundlak mean terms\n")
+cat("H₀: λ = 0 (RE orthogonality holds, plain RE is consistent)\n")
+cat("H₁: λ ≠ 0 (RE is biased, Mundlak correction is needed)\n\n")
+mundlak_joint <- glht(m_mundlak, linfct = paste0(mundlak_mean_cols, " = 0"))
+summary(mundlak_joint)
+
+cat("\nAIC comparison:\n")
+cat("RE model AIC:      ", round(AIC(m_re), 2), "\n")
+cat("Mundlak model AIC: ", round(AIC(m_mundlak), 2), "\n")
+cat("Lower AIC is preferred.\n")
+```
+
+------------------------------------------------------------------------
+
+## 3.3.3 Soil × weather interactions (OLS with region dummies)
+
+We return to OLS with region dummies (the same framework as Parts 1 and 2) and add soil × weather interaction terms. These are identified under region dummies because the interaction varies over time. We test four theoretically motivated interactions:
+
+-   `organic_matter × days_hot_crit_gs` — does richer soil buffer heat stress?
+-   `organic_matter × days_drought` — does organic matter retain more plant-available water during drought?
+-   `clay × days_hot_crit_gs` — does clay content (higher water retention) reduce heat damage?
+-   `clay × days_drought` — does clay protect against drought stress?
+
+```{r soil-interactions}
+panel_interact <- panel_base |>
+  mutate(
+    om_x_hot       = organic_matter * days_hot_crit_gs,
+    om_x_drought   = organic_matter * days_drought,
+    clay_x_hot     = clay * days_hot_crit_gs,
+    clay_x_drought = clay * days_drought
+  )
+
+interaction_cols <- c("om_x_hot", "om_x_drought", "clay_x_hot", "clay_x_drought")
+
+fml_interact <- as.formula(paste(
+  "yield_cpha ~",
+  paste(c(re_weather, interaction_cols, all_controls), collapse = " + ")
+))
+
+m_interact <- lm(fml_interact, data = panel_interact)
+summary(m_interact)
+
+interact_coefs <- coef(summary(m_interact)) |>
+  as.data.frame() |>
+  rownames_to_column("variable") |>
+  filter(variable %in% interaction_cols) |>
+  rename(std_error = `Std. Error`, t_value = `t value`, p_value = `Pr(>|t|)`) |>
+  mutate(
+    label = case_when(
+      variable == "om_x_hot"       ~ "Organic matter × Hot days (GS)",
+      variable == "om_x_drought"   ~ "Organic matter × Drought days",
+      variable == "clay_x_hot"     ~ "Clay × Hot days (GS)",
+      variable == "clay_x_drought" ~ "Clay × Drought days"
+    ),
+    significant = case_when(
+      p_value < 0.01 ~ "***",
+      p_value < 0.05 ~ "**",
+      p_value < 0.10 ~ "*",
+      TRUE           ~ "ns"
+    ),
+    Estimate  = round(Estimate,  4),
+    std_error = round(std_error, 4),
+    p_value   = round(p_value,   4)
+  ) |>
+  dplyr::select(label, Estimate, std_error, t_value, p_value, significant)
+
+knitr::kable(interact_coefs, digits = 4,
+  caption = "Soil × weather interaction coefficients (OLS with region dummies)")
+
+cat("\nJoint significance of all soil × weather interactions:\n")
+linearHypothesis(m_interact,
+  c("om_x_hot = 0", "om_x_drought = 0", "clay_x_hot = 0", "clay_x_drought = 0"))
+```
+
+------------------------------------------------------------------------
+
+## 3.3.4 Individual and joint significance summary
+
+```{r soil-significance-summary}
+soil_compare <- soil_coefs_re |>
+  dplyr::select(variable, Estimate, p_approx, significant) |>
+  rename(est_RE = Estimate, p_RE = p_approx, sig_RE = significant) |>
+  left_join(
+    soil_coefs_mundlak |>
+      dplyr::select(variable, Estimate, p_approx, significant) |>
+      rename(est_Mundlak = Estimate, p_Mundlak = p_approx, sig_Mundlak = significant),
+    by = "variable"
+  )
+
+knitr::kable(soil_compare, digits = 3,
+  caption = "Soil variable coefficients: RE vs Mundlak-Chamberlain comparison")
+
+cat("\n=== Joint significance summary ===\n")
+cat("RE model — joint test p-value: see glht output above\n")
+cat("Mundlak model — joint test p-value: see glht output above\n")
+cat("Interaction model — joint test p-value: see linearHypothesis output above\n")
+```
+
+------------------------------------------------------------------------
+
+## 3.3.5 Part 3 comparison table
+
+```{r part3-comparison}
+part3_table <- tibble(
+  Model = c(
+    "RE (soil direct effects)",
+    "Mundlak-Chamberlain (soil + climate controls)",
+    "OLS + region dummies + soil × weather interactions"
+  ),
+  N      = c(nobs(m_re), nobs(m_mundlak), nobs(m_interact)),
+  Adj_R2 = c(NA_real_, NA_real_, summary(m_interact)$adj.r.squared),
+  AIC    = c(AIC(m_re), AIC(m_mundlak), AIC(m_interact)),
+  BIC    = c(BIC(m_re), BIC(m_mundlak), BIC(m_interact))
+)
+
+knitr::kable(part3_table, digits = 3,
+  caption = "Part 3 model comparison: three approaches to soil variable identification")
+```
+
+*Note: Adj R² is not directly comparable between lme4 mixed models (RE, Mundlak) and OLS (interactions model). AIC and BIC are valid for comparison within each estimator class but should be interpreted with caution across classes.*
+
+------------------------------------------------------------------------
+
+## 3.3.6 Conclusions from soil analysis
+
+**On the choice of estimator:**
+
+The Hausman-type test on the Mundlak mean terms reveals whether the plain RE model is adequate. If the joint test on $\boldsymbol{\lambda}$ rejects the null, the RE orthogonality assumption fails — meaning that the long-run climate of each oblast is correlated with its unobserved random effect. In this case, the Mundlak model is preferred: it corrects for this bias by explicitly controlling for regional climate averages, and its soil coefficients should be interpreted as the effect of soil quality *conditional on the oblast's climate*.
+
+**On direct soil effects (RE and Mundlak):**
+
+The RE model provides a first approximation of which soil properties matter. Positive coefficients on `organic_matter` would confirm that higher soil carbon improves average yield — consistent with its role in water retention, nutrient supply, and microbial activity. The `clay` coefficient captures a trade-off: clay soils retain more moisture (positive in dry years) but also drain poorly and warm more slowly in spring (potentially negative overall). If the Mundlak correction substantially changes the magnitude or significance of soil coefficients relative to plain RE, this confirms that ignoring the climate-soil correlation would have led to misleading inferences.
+
+**On soil × weather interactions (OLS model):**
+
+The interaction coefficients answer the most actionable question for agribusiness: does soil quality change the *sensitivity* of yield to weather shocks? A positive and significant coefficient on `organic_matter × days_hot_crit_gs` means that each additional hot day causes less yield loss in oblasts with richer soils — direct empirical evidence for the buffering role of soil organic matter under heat stress. Similarly, a significant `organic_matter × days_drought` interaction would support the agronomic claim that organic matter improves drought resilience by enhancing water-holding capacity. If the joint test on all four interaction terms is significant, we can conclude that soil quality modulates weather risk — an important finding for climate adaptation strategy.
+
+**Limitation:** With only 24 oblasts and static soil data, identification of soil effects relies entirely on cross-sectional variation. The estimates are sensitive to unobserved regional factors that co-vary with both soil quality and yield (e.g., management culture, land consolidation, irrigation access). The Mundlak correction partially addresses this but cannot eliminate all confounding. These results should be interpreted as indicative associations rather than causal estimates.
+
+---
+
+# Conclusions
+
+## What the data showed
+
+The exploratory analysis established several facts that directly shaped the modelling strategy. First, yield levels and trends differ substantially across oblasts — western regions consistently outperform eastern ones, and the patterns diverge enough that a single common trend cannot summarise all regions. This motivated including both a common time trend and, where warranted, region-specific trends. Second, the VIF analysis confirmed that solar radiation, ET₀, and dewpoint are largely redundant given the information already captured by temperature stress metrics and precipitation: removing these three variables reduced the maximum VIF from 70.25 to 6.91 with no loss of substantive content.
+
+## What the models showed
+
+**Part 1 — Stationarity and trend.** Raw yield series are non-stationary in most oblasts, but model residuals show no persistent unit-root behaviour, confirming that the regression specification adequately absorbs trends. Adding a common time trend improved adjusted R² from 0.744 to 0.764 and reduced AIC by 16 points. Region-specific trends added no further improvement and consumed too many degrees of freedom. The lagged loss rate was individually insignificant, suggesting that farmer behavioural responses to prior-year losses are not a primary driver of subsequent yield in this dataset.
+
+**Part 2 — Weather window.** The growing season model (M_gs) outperformed the full-year model on all criteria: adjusted R² of 0.794 versus 0.764, AIC lower by 28 points. The two-split and three-split models performed similarly to M_gs but added complexity without meaningful gain. Within the growing season specification, the key significant weather variables were: days with extreme heat stress (positive, counterintuitive — likely a proxy for summer radiation), accumulated non-critical heat (negative — sustained warmth above the growth optimum reduces yield), total growing season precipitation (positive), and mean wind speed (negative — lodging risk). These results confirm Hypothesis 3: the growing season window dominates, supporting Hypothesis 2, and extreme-day counts carry predictive content beyond mean temperature, supporting Hypothesis 3.
+
+**Part 3 — Soil variables.** Three complementary approaches were used to identify soil effects that are collinear with region dummies in the OLS framework. The plain RE model identified pH, clay, and sand as individually significant. After applying the Mundlak-Chamberlain correction — which controls for the correlation between long-run regional climate and soil quality — organic matter and sand emerged as the most robust soil effects, while clay lost significance. The Hausman-type test on the Mundlak mean terms was only marginally significant for two terms (accumulated cold and precipitation), suggesting the RE orthogonality assumption is not severely violated but the Mundlak model is still preferred on AIC grounds (1189 vs 1222). The soil × weather interaction model found no statistically significant interactions between organic matter or clay and heat or drought stress (joint F-test p = 0.61), failing to support the buffering hypothesis with this dataset.
+
+## Answers to the research hypotheses
+
+**H1 (meteorological significance):** Confirmed. Growing season temperature stress, precipitation, and wind are jointly and individually significant drivers of yield. The relationship is non-linear in the sense that both heat stress days and accumulated heat above the growth optimum matter, with opposing signs.
+
+**H2 (seasonal relevancy):** Confirmed. The growing season model outperforms the full-year model. Winter weather variables, once separated into their own window, add little incremental explanatory power beyond the growing season.
+
+**H3 (extreme day classification):** Confirmed. Days with extreme heat stress and accumulated non-critical heat are both significant, while raw mean temperature metrics have higher VIF and lower t-statistics. Daily data enabling extreme-event counting adds value over simple averages.
+
+**H4 (redundancy):** Confirmed. Solar radiation, ET₀, and dewpoint can be dropped from the data collection protocol without loss. The mandatory set is: daily maximum and minimum temperature, daily precipitation, daily wind speed, and soil moisture.
+
+**H5 (soil as moderator):** Partially confirmed. Soil organic matter and sand content have direct effects on average yield (identified through the Mundlak model), but do not significantly moderate weather sensitivity in the interaction model. Soil quality matters for baseline productivity but does not appear to buffer heat or drought shocks in this 9-year panel.
+
+## Practical recommendation for agribusinesses
+
+The minimum sufficient data collection protocol for yield forecasting at oblast level consists of: daily Tmax and Tmin (to construct extreme-day counts and accumulated heat/cold), daily precipitation totals, daily wind gusts, and periodic soil moisture readings at 0–7 cm depth. Solar radiation, ET₀, dewpoint, and cloudiness are redundant given this set and need not be collected. Soil properties from a single baseline survey provide useful information about regional yield potential but should not be expected to improve short-run weather-driven forecasts.
